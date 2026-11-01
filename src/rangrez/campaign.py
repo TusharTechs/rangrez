@@ -161,6 +161,18 @@ class Campaign:
             self.emit("status", status=self.status, shot=shot.index, delta_e=de)
         return self._shot_summary(shot) | {"matched": m.ok and de <= self.tolerance}
 
+    def declare_out_of_gamut(self) -> dict:
+        best = self.best
+        self.status = "out_of_gamut"
+        text = (
+            f"Target is outside what turquoise, fuchsia and lemon yellow can reach on cotton within the "
+            f"{self.rig.limits.max_conc_g_per_l:.0f} g/L safety cap. Closest achievable: dip {best.index}, "
+            f"{lab_to_hex(best.measurement.lab)}, dE00 {best.delta_e:.2f}. A darker or different dye is needed."
+        )
+        self.note(text, who="agent")
+        self.emit("status", status=self.status, reason=text, shot=best.index, delta_e=best.delta_e)
+        return {"out_of_gamut": True, "closest_shot": best.index, "delta_e00": round(best.delta_e, 2)}
+
     def escalate(self, reason: str) -> dict:
         self.status = "escalated"
         self.note(f"Escalated to the colourist: {reason}", who="agent")

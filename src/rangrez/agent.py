@@ -19,7 +19,9 @@ from .vision import BASE_URL, ApiCall, CallLog
 
 WONDER_MODEL = os.environ.get("RANGREZ_AGENT_MODEL", "muse-wonder-1.0")
 NO_PROGRESS_LIMIT = 3
+MIN_IMPROVEMENT_DE00 = 0.3  # smaller gains are within dip-to-dip noise
 CORRECTION_ZONE_DE00 = 6.0
+OUT_OF_GAMUT_STREAK = 2  # dips at the concentration cap that still miss
 
 SYSTEM_PROMPT = """You are the colourist running Rangrez, a small self-driving dye lab for cotton.
 Goal: match the target shade on a real cotton strip to CIEDE2000 <= the tolerance, in as few dips as possible.
@@ -33,6 +35,7 @@ You control the lab only through tools. Rules:
   while the correction is learned from real dips.
 - If a shot is flagged REJECT, do not trust its colour; re-run or change something and say what.
 - Write one short notebook entry (write_note) per shot: hypothesis, what you changed, what you expect.
+- If dips at the concentration cap still miss, the shade is outside this dye set's gamut: say so and report the closest dip.
 - Stop with finish when the target is matched or the budget is spent. Use escalate if something looks physically wrong.
 Concentrations are g/L of dye in a 20 mL bath; dyes are turquoise, fuchsia, lemon yellow (cold fibre-reactive on cotton)."""
 
@@ -51,14 +54,23 @@ TOOLS = [
 
 
 def _no_progress(c: Campaign) -> int:
-    """Dips since the best match last improved."""
+    """Dips since the best match last improved by more than measurement noise."""
     best_de, since = float("inf"), 0
     for s in c.shots:
-        if s.measurement.ok and s.delta_e < best_de - 0.1:
+        if s.measurement.ok and s.delta_e < best_de - MIN_IMPROVEMENT_DE00:
             best_de, since = s.delta_e, 0
         else:
             since += 1
     return since
+
+
+def _out_of_gamut(c: Campaign) -> bool:
+    """The last dips pushed a dye to its safety cap and still missed: unreachable."""
+    recent = [s for s in c.shots if s.measurement.ok][-OUT_OF_GAMUT_STREAK:]
+    if len(recent) < OUT_OF_GAMUT_STREAK:
+        return False
+    cap = 0.98 * c.rig.limits.max_conc_g_per_l
+    return all(max(s.recipe.conc) >= cap and s.delta_e > c.tolerance for s in recent)
 
 
 def dispatch(c: Campaign, name: str, args: dict) -> dict:
@@ -70,7 +82,10 @@ def dispatch(c: Campaign, name: str, args: dict) -> dict:
         return c.suggest_recipes()
     if name == "run_shot":
         out = c.run_shot(args["recipe_g_per_l"], float(args.get("dip_seconds", 90.0)), args.get("rationale", ""))
-        if c.status == "running" and _no_progress(c) >= NO_PROGRESS_LIMIT:
+        if c.status == "running" and _out_of_gamut(c):
+            c.declare_out_of_gamut()
+            out["out_of_gamut"] = True
+        elif c.status == "running" and _no_progress(c) >= NO_PROGRESS_LIMIT:
             c.escalate(f"{NO_PROGRESS_LIMIT} dips in a row without improving on the best match")
             out["escalated"] = True
         return out

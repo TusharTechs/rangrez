@@ -38,10 +38,18 @@ def test_campaign_converges_on_reachable_shades(name):
     assert first_guess is not None
 
 
-def test_out_of_gamut_target_escalates_not_loops():
-    c = make_campaign(hex_to_lab("#ff2a00"), max_shots=10)  # saturated orange-red: not reachable cleanly
+def test_out_of_gamut_target_stops_early_with_closest_match():
+    c = make_campaign(hex_to_lab("#1f7f86"), max_shots=10)  # darker teal than 10 g/L can reach
     run_deterministic(c)
-    assert c.status in {"escalated", "matched", "finished"}
+    assert c.status == "out_of_gamut"
+    assert len(c.shots) <= 5
+    assert any("Closest achievable" in n["text"] for n in c.notebook)
+
+
+def test_unreachable_saturated_red_never_loops_forever():
+    c = make_campaign(hex_to_lab("#ff2a00"), max_shots=10)
+    run_deterministic(c)
+    assert c.status in {"out_of_gamut", "escalated", "matched", "finished"}
     assert len(c.shots) <= 10
 
 

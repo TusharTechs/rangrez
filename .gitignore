@@ -27,3 +27,6 @@ competitors/
 *.research.md
 *_research.*
 *competitor*
+
+# Local editor/agent tooling
+.claude/

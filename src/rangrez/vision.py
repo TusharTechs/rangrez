@@ -291,6 +291,36 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     return Measurement(lab, lab_sd, residual, n, flags, card.box, strip.box, target_lab)
 
 
+def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, bool]:
+    """Lab of the named object in a customer's photo (e.g. "teal kurta").
+
+    If the photo also shows the colour card, the result is calibrated;
+    otherwise it is the photo's own sRGB, which is only as good as their camera.
+    Returns (lab, calibrated).
+    """
+    img, srgb = decode(jpeg)
+    lin = srgb_to_linear(srgb)
+    rng = np.random.default_rng(0)
+    objects = segmenter.segment(img, jpeg, concept)
+    if not objects:
+        raise RuntimeError(f"could not find '{concept}' in the photo")
+    obj = max(objects, key=lambda i: i.mask.sum())
+    M = np.vstack([np.eye(3), np.zeros((1, 3))])
+    calibrated = False
+    try:
+        cards = segmenter.segment(img, jpeg, CARD_PROMPT)
+    except Exception:
+        cards = []
+    if cards:
+        from .colour import fit_colour_correction
+
+        card = max(cards, key=lambda i: i.mask.sum())
+        M = fit_colour_correction(_patch_samples(lin, _card_inner_box(card)), reference_linear())
+        calibrated = True
+    lab, _, _, _ = _lab_of_region(lin, obj.mask, M, rng)
+    return lab, calibrated
+
+
 def overlay(jpeg: bytes, m: Measurement) -> bytes:
     """Frame with the card grid and strip box drawn on it, for the dashboard."""
     from PIL import ImageDraw

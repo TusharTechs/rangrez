@@ -16,10 +16,14 @@ dependencies = [
     "pillow>=13.0.0",
     "pyserial>=3.5",
     "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.33",
     "scipy>=1.18.1",
     "uvicorn[standard]>=0.54.0",
     "websockets>=17.4",
 ]
+
+[project.scripts]
+rangrez-lab = "rangrez.server:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14.0"]
