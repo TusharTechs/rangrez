@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local run artefacts
+runs/
+captures/
+*.log
+
+# Private research, competitor analysis and judging material (never publish)
+research/
+notes/
+private/
+judge/
+competitors/
+*.research.md
+*_research.*
+*competitor*

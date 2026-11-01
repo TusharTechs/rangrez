@@ -1,0 +1,32 @@
+[project]
+name = "rangrez"
+version = "0.1.0"
+description = "A self-driving dye lab: Meta models match any colour on real cotton"
+readme = "README.md"
+authors = [
+    { name = "Tushar Agarwal", email = "tusharaggarwal274@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "meta-sam-parser>=0.1.0",
+    "numpy>=2.5.4",
+    "openai>=3.42.0",
+    "opencv-python-headless>=5.0.0.93",
+    "pillow>=13.0.0",
+    "pyserial>=3.5",
+    "python-dotenv>=1.2.4",
+    "scipy>=1.18.1",
+    "uvicorn[standard]>=0.54.0",
+    "websockets>=17.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
