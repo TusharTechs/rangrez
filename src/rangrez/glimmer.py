@@ -6,7 +6,8 @@ camera, from every recipe the lab dipped and the colour SAM 3.1 measured on the 
 
     GLIMMER_MODEL=accounts/<account>/models/<model>#accounts/<account>/deployments/<deployment>
 
-and the first dip of every campaign gets a "glimmer" candidate.
+or serve the published weights on Modal (eval/glimmer_serve.py) and set GLIMMER_BASE_URL and
+GLIMMER_API_KEY. Either way the first dip of every campaign gets a "glimmer" candidate.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import numpy as np
 from .colour import lab_to_hex
 from .profiles import PROFILE
 
-INFERENCE_URL = "https://api.fireworks.ai/inference/v1"
+FIREWORKS_URL = "https://api.fireworks.ai/inference/v1"
 SYSTEM = (
     f"You are Glimmer, the colourist of a small cotton dye lab. Dyes: {', '.join(PROFILE.names)} "
     f"({PROFILE.description}). Given a target colour measured in CIELAB (D65), reply with only the "
@@ -45,8 +46,15 @@ def parse(text: str) -> np.ndarray | None:
         return None
 
 
+def _endpoint() -> tuple[str, str]:
+    """Where Glimmer runs: Fireworks by default, or any OpenAI-style endpoint (eval/glimmer_serve.py on Modal)."""
+    url = os.environ.get("GLIMMER_BASE_URL") or FIREWORKS_URL
+    key = os.environ.get("GLIMMER_API_KEY") if os.environ.get("GLIMMER_BASE_URL") else os.environ.get("FIREWORKS_API_KEY")
+    return url, (key or "").strip()
+
+
 def configured() -> bool:
-    return bool(os.environ.get("GLIMMER_MODEL") and os.environ.get("FIREWORKS_API_KEY"))
+    return bool(os.environ.get("GLIMMER_MODEL") and _endpoint()[1])
 
 
 def first_guess(target_lab, log=None, model: str | None = None) -> np.ndarray | None:
@@ -58,7 +66,8 @@ def first_guess(target_lab, log=None, model: str | None = None) -> np.ndarray | 
     model = model or os.environ.get("GLIMMER_MODEL")
     if not model:
         return None
-    client = OpenAI(base_url=INFERENCE_URL, api_key=os.environ["FIREWORKS_API_KEY"].strip(), timeout=60, max_retries=1)
+    url, key = _endpoint()
+    client = OpenAI(base_url=url, api_key=key, timeout=120, max_retries=1)
     started = time.monotonic()
     try:
         r = client.chat.completions.create(model=model, temperature=0, max_tokens=400, messages=[

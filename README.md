@@ -32,6 +32,7 @@ target colour ──► Muse Wonder (lead colourist)
 | --- | --- |
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
+| **Muse Voice Transcribe** | Hands-free lab: the dyer says "done", "repeat" or "stop", or describes what they see, with keyword biasing for the lab's words |
 | **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. First-dip error falls from 4.10 to 0.92 ΔE00. The weights are published |
 
 ### Engineering choices
@@ -44,6 +45,14 @@ target colour ──► Muse Wonder (lead colourist)
 - **It evens out the light.** A desk lamp, a window or a shadow lights the strip and the card unequally. Rangrez fits the light across the frame from the white paper, ignoring cast shadows, and divides it out before measuring. If the light is too steep (a phone flash), or the card is unreadable, it says so and asks for a retake, or falls back to the paper.
 - **It compares side by side.** If the customer's cloth lies beside the strip in the dip photo, Rangrez compares the two under the same light and re-anchors the target to that reading. A target read from a photo taken elsewhere carries that photo's light and camera error; the side-by-side reading does not.
 - **It ignores the bedsheet.** SAM's "fabric" also finds the bedsheet or tablecloth under the paper. Only cloth lying on the paper is measured.
+- **It remembers the dye lot.** Every dip goes into the lab's memory. Each new campaign starts from a model fitted to all of them and is offered the most similar past dip, corrected towards the new target. Over a night shift of 40 campaigns, the first dip's true error fell from 3.81 to 1.40 ΔE00 and dips per match from 2.35 to 1.65 (`eval/night_shift.py`, chart in `eval/night_shift.png`).
+- **It talks to the buyer's language.** Every campaign produces a lab-dip report, the document a dye house sends for shade approval:
+  - target against the submitted dip;
+  - ΔE00 split into ΔL*, ΔC* and ΔH*, with a verdict in plain words such as "slightly darker, greener";
+  - the recipe scaled for 1 kg of cotton;
+  - every dip with its photo and SAM's masks;
+  - a line for the buyer's signature.
+- **Hands-free.** The dyer's gloves are wet with dye. In hands-free mode the dashboard reads each dip's instructions aloud and listens through Muse Voice Transcribe, with "done", "repeat" and "stop" as commands. Anything else, such as "it looks patchy near the top", goes into the notebook for Wonder. Nothing spoken can dispense dye.
 - **It measures cloth, not liquid.** A cup of dye does not predict the shade on fabric, so every reading is taken on a dried, dyed cotton segment.
 
 ## Run it
@@ -53,7 +62,7 @@ uv sync
 uv run rangrez-lab            # http://127.0.0.1:8000
 ```
 
-Or try it without installing anything: [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez).
+Or try it without installing anything: [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez). Photograph your outfit: SAM 3.1 reads its colour and Rangrez gives a recipe to dye a matching cloth at home, in drops of blue, red and yellow household colour.
 
 Without an API key it runs the full loop in the built-in simulator with an offline policy and SAM masks cached for each scene. The simulator has a hidden "real" dye lot and pump noise, and every dip comes back as a real-looking phone photo (see below). Add a key to use hosted SAM 3.1 and Muse Wonder:
 
@@ -207,10 +216,15 @@ The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every camp
 | `src/rangrez/esp32_emulator.py` | Virtual ESP32: the firmware's protocol and limits on a pseudo serial port |
 | `src/rangrez/camera.py` | Webcam, IP-webcam phone or video-file capture |
 | `src/rangrez/recorder.py` | Records every campaign for review and the demo |
+| `src/rangrez/memory.py` | Lab memory across campaigns |
+| `src/rangrez/report.py` | The buyer-facing lab-dip report |
+| `src/rangrez/voice.py` | Hands-free commands with Muse Voice Transcribe |
+| `src/rangrez/home.py` | Home recipes in drops of household colour |
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
 | `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
-| `eval/glimmer.py`, `eval/glimmer_modal.py`, `eval/glimmer/` | Glimmer's training data, fine-tunes (Fireworks, Modal), evaluation and publishing |
+| `eval/glimmer.py`, `eval/glimmer_modal.py`, `eval/glimmer_serve.py`, `eval/glimmer/` | Glimmer's training data, fine-tunes (Fireworks, Modal), serving, evaluation and publishing |
+| `eval/night_shift.py` | Campaign after campaign with and without lab memory |
 | `src/rangrez/glimmer.py` | Glimmer's first-dip proposal in the lab |
 | `space/` | The Hugging Face Space (dashboard on the simulator; live models behind a passcode) |
 
