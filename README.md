@@ -33,7 +33,8 @@ target colour ──► Muse Wonder (lead colourist)
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
 | **Muse Image** | Bulk preview: recolours the customer's garment photo to the approved dip's shade. Rangrez measures the preview with SAM 3.1 and corrects it, because an image model is not a colour instrument (one raw preview was 11 ΔE00 off, corrected to 0.04). It also generated the realistic test scenes |
-| **Muse Voice Transcribe** | Hands-free lab: the dyer says "done", "repeat" or "stop", or describes what they see, with keyword biasing for the lab's words |
+| **Muse Voice Transcribe** | Hands-free lab in English or Hindi: the dyer says "done", "repeat" or "stop" ("हो गया", "फिर से", "बंद करो"), or describes what they see |
+| **Muse Spark** | Reads the buyer's message into an order: quantity, fabric, dates and shade strictness, which sets the pass tolerance and the production plan |
 | **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. First-dip error falls from 4.10 to 0.92 ΔE00. The weights are published |
 
 ### Engineering choices
@@ -53,7 +54,12 @@ target colour ──► Muse Wonder (lead colourist)
   - the recipe scaled for 1 kg of cotton;
   - every dip with its photo and SAM's masks;
   - a line for the buyer's signature.
-- **Hands-free.** The dyer's gloves are wet with dye. In hands-free mode the dashboard reads each dip's instructions aloud and listens through Muse Voice Transcribe, with "done", "repeat" and "stop" as commands. Anything else, such as "it looks patchy near the top", goes into the notebook for Wonder. Nothing spoken can dispense dye.
+- **Hands-free, in English or Hindi.** The dyer's gloves are wet with dye. In hands-free mode the dashboard reads each dip's instructions aloud and listens through Muse Voice Transcribe:
+  - English: "done", "repeat", "stop";
+  - Hindi: "हो गया", "फिर से", "बंद करो".
+  Anything else, such as "it looks patchy near the top" or "कपड़ा ऊपर से धब्बेदार है", goes into the notebook for Wonder. Nothing spoken can dispense dye.
+- **It reads the order.** Muse Spark turns the buyer's chat message, in English or Hindi, into a structured order: garment, quantity, fabric, dates and how strict the shade is. The strictness sets the pass tolerance: strict 1.0, normal 1.5, relaxed 2.0 ΔE00. The approved recipe then scales to a production plan for the order: cotton, dye bath, grams of each dye, salt and soda ash.
+- **No single photo decides a pass.** On an automated rig, a dip that passes is photographed again, and both readings must agree.
 - **It measures cloth, not liquid.** A cup of dye does not predict the shade on fabric, so every reading is taken on a dried, dyed cotton segment.
 
 ## Run it
@@ -222,6 +228,7 @@ The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every camp
 | `src/rangrez/voice.py` | Hands-free commands with Muse Voice Transcribe |
 | `src/rangrez/home.py` | Home recipes in drops of household colour |
 | `src/rangrez/preview.py` | Bulk preview with Muse Image, measured and corrected |
+| `src/rangrez/order.py` | Order intake with Muse Spark; production plan |
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
 | `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |

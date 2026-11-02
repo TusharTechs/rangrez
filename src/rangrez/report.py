@@ -50,6 +50,26 @@ def difference(target, sample) -> dict:
             "words": ", ".join(words) or "no visible difference"}
 
 
+def _impact_block(c) -> str:
+    """What this lab dip took, next to how lab dips usually go."""
+    if not c.shots:
+        return ""
+    stock_ml = sum(float(np.sum(s.recipe.as_array())) / PROFILE.stock_per_l * c.rig.limits.bath_ml for s in c.shots)
+    water_ml = len(c.shots) * c.rig.limits.bath_ml
+    minutes = (c.shots[-1].at - c.shots[0].at) / 60 if len(c.shots) > 1 else 0
+    took = f"{len(c.shots)} dip{'s' if len(c.shots) > 1 else ''}" + (f" over {minutes:.0f} minutes" if minutes >= 1 else "")
+    return f"""<h2>What it took</h2>
+<div class="grid">
+<div><div class="verdict" style="color:var(--ink)">{took}</div>
+<div class="meta">{stock_ml:.1f} mL of dye stock, about {water_ml / 1000:.2f} L of water and {len(c.shots)} cotton strip{'s' if len(c.shots) > 1 else ''}.</div></div>
+<div class="meta">How lab dips usually go: about 2 to 4 rounds, each several days of mill work plus courier and the buyer's review
+(one retailer allows up to five business days per review). Sources:
+<a href="https://ifactoryapp.com/industries/textile-manufacturing/textile-sample-development-cost-time-management">iFactory sample-development guide</a>,
+<a href="https://www.thekrogerco.com/wp-content/uploads/2017/08/ale_gmsg.pdf">a retailer's supplier guide</a>,
+<a href="https://cottonworks.com/en/topics/sourcing-manufacturing/dyeing/the-lab-dip-process">Cotton Incorporated</a>.</div>
+</div>"""
+
+
 def _order_block(order: dict, best) -> str:
     from .order import production_plan
 
@@ -134,6 +154,8 @@ img {{ border-radius: 6px; max-width: 100%; height: auto; }} .sign {{ display:fl
 {f'''<h2>Recipe</h2>
 <table><tr><th>Dye</th><th class="num">Bath concentration</th><th class="num">Stock for 1 kg cotton (1:{LIQUOR_RATIO})</th></tr>{prod}</table>
 <p class="meta">Dip {best.recipe.dip_seconds:.0f} s. Stock at {PROFILE.stock_per_l:g} {UNIT if UNIT != "drops" else "drops"} per litre. Scale-up assumes the same liquor ratio, temperature and fixation as the lab dip; confirm with a bulk trial.</p>''' if best else ""}
+
+{_impact_block(c)}
 
 {_order_block(order, best) if order else ""}
 

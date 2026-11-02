@@ -25,6 +25,10 @@ and you can read a target colour from your own photo ("match this kurta").
 Rangrez gives you a recipe to dye a matching cloth at home, in drops of blue, red and yellow
 household colour.
 
+With the passcode you can also paste the buyer's message (English or Hindi) for **Muse Spark** to
+read into an order, run the lab **hands-free by voice** in English or Hindi (Muse Voice Transcribe),
+and see the customer's garment in the approved shade (**Muse Image**, measured and corrected).
+
 One lab, shared by everyone viewing: if a campaign is running, you are watching it.
 
 Code, hardware, firmware and evaluation: https://github.com/TusharTechs/rangrez

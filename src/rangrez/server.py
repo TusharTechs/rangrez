@@ -431,6 +431,17 @@ def report() -> HTMLResponse:
     return HTMLResponse(LAB.report())
 
 
+@app.get("/api/memory")
+def memory() -> dict:
+    """How the lab has done with this dye lot, campaign by campaign (the night shift, live)."""
+    path = default_path()
+    m = LabMemory(path) if path is not None else None
+    if m is None:
+        return {"dips": 0, "campaigns": []}
+    keep = ("status", "dips", "first_de00", "best_de00")
+    return {"dips": len(m.dips), "campaigns": [{k: c.get(k) for k in keep} for c in m.campaigns[-60:]]}
+
+
 @app.get("/api/shot/{index}.jpg")
 def shot_image(index: int, raw: bool = False) -> Response:
     c = LAB.campaign

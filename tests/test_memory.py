@@ -42,3 +42,12 @@ def test_nearest_remembered_dip(tmp_path):
     m.record_dip([0, 1, 0], [55, 40, 0], "c1")
     conc, _, de = m.nearest(np.array([56, 38, 1]))
     assert list(conc) == [0, 1, 0] and de < 3
+
+
+def test_an_automated_match_is_confirmed_by_a_second_photo():
+    rig = VirtualRig(seed=7, scene="daylight_window")
+    c = Campaign(rig.true_swatch_lab(Recipe((3.0, 0.5, 0.5))), rig, rig.segmenter(), max_shots=8)
+    run_deterministic(c)
+    assert c.status == "matched"
+    assert any(n["text"].startswith("Confirmed with a second photo") for n in c.notebook)
+    assert rig.photos == len(c.shots) + 1  # one extra photo, for the confirmation

@@ -192,10 +192,32 @@ class Campaign:
         self.shots.append(shot)
         self.emit("shot", index=shot.index, recipe=recipe.describe(), lab=m.lab.tolist(),
                   hex=lab_to_hex(m.lab), delta_e=de, flags=m.flags, rationale=rationale)
-        if m.ok and de <= self.tolerance:
+        matched = m.ok and de <= self.tolerance and self._confirmed(shot)
+        if matched:
             self.status = "matched"
-            self.emit("status", status=self.status, shot=shot.index, delta_e=de)
-        return self._shot_summary(shot) | {"matched": m.ok and de <= self.tolerance}
+            self.emit("status", status=self.status, shot=shot.index, delta_e=shot.delta_e)
+        return self._shot_summary(shot) | {"matched": matched}
+
+    def _confirmed(self, shot: Shot) -> bool:
+        """No single photo decides a pass: an automated rig photographs the strip again and both must agree."""
+        if hasattr(self.rig, "provide") or not hasattr(self.rig, "capture"):
+            return True  # a person sent this photo; asking for another would only slow them down
+        try:
+            m2 = measure(self.rig.capture(), self.segmenter, seed=100 + shot.index)
+        except RuntimeError as exc:
+            self.note(f"Confirmation photo failed ({exc}); not calling it a match on one photo.", who="lab")
+            return False
+        if not m2.ok:
+            self.note("Confirmation photo was rejected; not calling it a match on one photo.", who="lab")
+            return False
+        de2 = float(delta_e_2000(m2.lab, self.target_lab))
+        if de2 > self.tolerance:
+            self.note(f"Dip {shot.index} read dE00 {shot.delta_e:.2f}, but a second photo reads {de2:.2f}: "
+                      "not a match yet.", who="lab")
+            return False
+        shot.delta_e = (shot.delta_e + de2) / 2
+        self.note(f"Confirmed with a second photo: dE00 {shot.delta_e * 2 - de2:.2f} and {de2:.2f}.", who="lab")
+        return True
 
     def _side_by_side(self, m) -> None:
         """The customer's cloth lies beside the strip: compare them under the same light.
