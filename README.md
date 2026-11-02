@@ -303,11 +303,12 @@ The supplier's model knows the dyes in general, not this dye lot through this ca
 | Muse Glimmer 30B, base | 11.38 | 19.40 | 8% (40 answers still reasoning at 2,048 tokens) |
 | Muse Glimmer 30B, LoRA on Fireworks Serverless Training | 1.59 | 3.46 | 88% |
 | **Muse Glimmer 30B, LoRA on Modal (published weights)** | **0.92** | **1.76** | **96%** |
+| Muse Glimmer 30B, LoRA v2 that also reads the lab's notebook (Modal) | 0.96 | 2.03 | 99% |
 | 5 nearest past dips, averaged | 1.07 | 1.83 | 99% |
 | Small neural net trained on the same dips, inverted | 0.78 | 1.70 | 99% |
 | Gaussian process trained on the same dips, inverted | 0.77 | 1.64 | 99% |
 
-The last three rows are fair data-driven baselines on the same 2,900 dips (`eval/glimmer_baselines.py`), and **they match or beat Glimmer**. Learning a 3-colour-to-3-dye mapping does not need a 30B model, and we say so. Two further caveats: the 100-target holdout scored both fine-tunes, and the Kubelka-Munk refit is misspecified for the simulator's dye lot, not short of data. Glimmer's place is where a regression can't go: v2 reads the lab's notebook (the most similar past dips, as recipes and measured colours) and reasons from them (`eval/glimmer_notebook.py`).
+The last three rows are fair data-driven baselines on the same 2,900 dips (`eval/glimmer_baselines.py`), and **they match or beat Glimmer**. Learning a 3-colour-to-3-dye mapping does not need a 30B model, and we say so. Two further caveats: the 100-target holdout scored both fine-tunes, and the Kubelka-Munk refit is misspecified for the simulator's dye lot, not short of data. We then trained v2 to read the lab's notebook: each prompt also carries the most similar past dips, as recipes and measured colours (`eval/glimmer_notebook.py`, 23 minutes on one H100). It lands under 3 ΔE00 more often (99%) but its median is no better (0.96), so the published adapter stays v1. On this task, a small regression is the better tool; Glimmer's value in Rangrez is as an open, fine-tunable model a dye house can train on its own records and talk to in language.
 
 Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, learning rate 1e-4, 360 steps.
 - **Fireworks:** free under the Glimmer promotion. Fireworks did not let this account download the weights.

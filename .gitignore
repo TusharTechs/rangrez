@@ -21,3 +21,8 @@ captures/
 eval/glimmer/adapter/
 lab/
 demo/
+
+# macOS
+.DS_Store
+# Large model weights (published on Hugging Face instead)
+eval/glimmer/adapter*/
