@@ -1,8 +1,33 @@
-# Rangrez
+<p align="center"><img src="assets/logo.svg" width="104" alt="Rangrez logo: a drop of three dyes and a tape of dips converging on the shade"></p>
 
-**A self-driving dye lab on Meta models.** Show Rangrez a colour; it picks a recipe, a rig (or a person with a dropper) dyes a cotton strip, a phone photographs it, and Rangrez corrects the recipe until the cloth matches.
+<h1 align="center">Rangrez <sub>रंगरेज़</sub></h1>
 
-> **Where it stands today.** The software, agent and Meta model stack are built and tested end to end. The $100 robot rig is designed (firmware, wiring, a virtual ESP32 that runs the real driver), but not yet built. Every result below comes from a simulator: hidden dye chemistry, plus real-looking phone photos made with Muse Image and recoloured to known truth. No real dye on real cloth yet; the measured numbers say so wherever they appear.
+<p align="center"><b>A self-driving dye lab on Meta models.</b><br>Show it a colour. It picks a recipe, a cotton strip is dyed, a phone photographs it, and it corrects the recipe until the cloth matches.</p>
+
+<p align="center">
+<a href="https://huggingface.co/spaces/TechTush/rangrez">▶ Try it</a> ·
+<a href="https://huggingface.co/spaces/TechTush/rangrez?replay=1">Watch a recorded live run</a> ·
+<a href="https://huggingface.co/spaces/TechTush/rangrez?tour=1">Take the 2-minute tour</a> ·
+<a href="https://huggingface.co/TechTush/rangrez-glimmer-lora">Glimmer weights</a> ·
+<a href="https://huggingface.co/datasets/TechTush/rangrez-lab-dips">Dataset</a>
+</p>
+
+![The Rangrez dashboard: the tape of dips converging on the target, SAM 3.1's masks on the dip photo, the colour difference gauge, and the Meta models lighting up as they are called](assets/dashboard.jpg)
+
+> **Where it stands today.** The software, agent and Meta model stack are built and tested end to end. The $100 robot rig is designed (firmware, wiring, and a virtual ESP32 that runs the real driver) but not yet built. Every result below comes from a simulator: hidden dye chemistry, plus real-looking phone photos made with Muse Image and recoloured to known truth. No real dye on real cloth yet; the measured numbers say so wherever they appear.
+
+**In one minute.**
+- **Six Meta models, six jobs:**
+  - SAM 3.1 measures every photo;
+  - Muse Wonder runs the lab;
+  - Muse Glimmer (fine-tuned, open weights) proposes the first dip;
+  - Muse Spark reads the buyer's WhatsApp order and drafts the reply;
+  - Muse Image previews the garment;
+  - Muse Voice Transcribe takes hands-free commands in English or Hindi.
+- **Measurement:** 0.66 ΔE00 median error from a phone photo with a printed colour card.
+- **Matching:** 24/24 shades matched in a median of 2 dips; lab memory cut the first dip's error from 3.81 to 1.40 over a 40-campaign night shift.
+- **Safety:** a deterministic gate, repeated in the firmware, means the model never drives a pump.
+- **Output:** every campaign ends in the document the buyer actually asks for: a lab-dip report with ΔE00 and CMC 2:1, options A/B/C, the recipe in % on weight of fabric and a production plan.
 
 *Rangrez* (रंगरेज़) means *dyer*.
 
@@ -131,7 +156,7 @@ Tests:
 uv run pytest
 ```
 
-The tests cover:
+`uv run pytest` runs 124 tests offline. They cover:
 - the CIEDE2000 reference pairs;
 - colour-card correction;
 - the Kubelka-Munk model;

@@ -9,11 +9,14 @@ first. Reports the agent's measured dE00 and the TRUE dE00 of the best dip.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 os.environ.setdefault("RANGREZ_DYES", "home")
+POLICY = sys.argv[1] if len(sys.argv) > 1 else "wonder"  # "wonder" (live) or "offline" (the same tools, fixed rules)
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -65,7 +68,10 @@ def one(case, seed):
     target, mode = target_from_photo(photo, "fabric", seg)
     c = Campaign(target, rig, seg, tolerance=2.0, max_shots=8)
     t0 = time.time()
-    run_with_wonder(c, log)
+    if POLICY == "offline":
+        run_deterministic(c)
+    else:
+        run_with_wonder(c, log)
     true_de = [float(delta_e_2000(t, true_target)) for t in getattr(rig, "truths", [])]
     best = int(np.argmin([s.delta_e for s in c.shots])) if c.shots else None
     return {
@@ -91,8 +97,10 @@ def main() -> None:
         print(f"   measured dE00 per dip {r['measured']}")
         print(f"   TRUE dE00 per dip     {r['true']}   best dip true dE00 {r['best_true']}")
         print(f"   api calls {r['calls']} failed {r['failed_calls']}  {r['secs']}s")
-    print(f"\nmatched {sum(r['status'] == 'matched' for r in rows)}/{len(rows)}; "
-          f"median dips {np.median([len(r['measured']) for r in rows]):.0f}")
+    print(f"\n{POLICY}: matched {sum(r['status'] == 'matched' for r in rows)}/{len(rows)}; "
+          f"median dips {np.median([len(r['measured']) for r in rows]):.0f}; "
+          f"median best true dE00 {np.median([r['best_true'] for r in rows if r['best_true'] is not None]):.2f}")
+    (Path(__file__).parent / f"campaigns_{POLICY}.json").write_text(json.dumps(rows, indent=2))
 
 
 if __name__ == "__main__":
