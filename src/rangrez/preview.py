@@ -16,7 +16,13 @@ import time
 import numpy as np
 from PIL import Image
 
-from .colour import delta_e_2000, lab_to_hex, lab_to_srgb, linear_to_srgb, srgb_to_linear
+from .colour import (
+    delta_e_2000,
+    lab_to_hex,
+    lab_to_srgb,
+    linear_to_srgb,
+    srgb_to_linear,
+)
 from .vision import ApiCall, MuseSamSegmenter, decode, read_object, target_from_photo
 
 IMAGE_MODEL = "muse-image-1.0"

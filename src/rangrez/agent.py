@@ -77,7 +77,10 @@ def _out_of_gamut(c: Campaign) -> bool:
     if len(recent) < OUT_OF_GAMUT_STREAK:
         return False
     cap = 0.98 * c.rig.limits.max_conc_g_per_l
-    return all(max(s.recipe.conc) >= cap and s.delta_e > c.tolerance for s in recent)
+    at_cap = all(max(s.recipe.conc) >= cap and s.delta_e > c.tolerance for s in recent)
+    # Still closing in at the cap (a shade on the edge of the gamut) is not out of reach yet.
+    improving = recent[-1].delta_e < recent[-2].delta_e - MIN_IMPROVEMENT_DE00
+    return at_cap and not improving
 
 
 def dispatch(c: Campaign, name: str, args: dict) -> dict:

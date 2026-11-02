@@ -7,6 +7,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev && chmod -R a+rX /app
 ENV RANGREZ_HOST=0.0.0.0 RANGREZ_PORT_HTTP=7860 RANGREZ_RECORD=0 RANGREZ_STEP_DELAY=1.2 \
+    RANGREZ_MEMORY=/tmp/lab/memory.json \
     HOME=/tmp PYTHONUNBUFFERED=1
 EXPOSE 7860
 CMD ["/app/.venv/bin/rangrez-lab"]

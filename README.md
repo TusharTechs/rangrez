@@ -32,6 +32,7 @@ target colour ──► Muse Wonder (lead colourist)
 | --- | --- |
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
+| **Muse Image** | Bulk preview: recolours the customer's garment photo to the approved dip's shade. Rangrez measures the preview with SAM 3.1 and corrects it, because an image model is not a colour instrument (one raw preview was 11 ΔE00 off, corrected to 0.04). It also generated the realistic test scenes |
 | **Muse Voice Transcribe** | Hands-free lab: the dyer says "done", "repeat" or "stop", or describes what they see, with keyword biasing for the lab's words |
 | **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. First-dip error falls from 4.10 to 0.92 ΔE00. The weights are published |
 
@@ -220,6 +221,7 @@ The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every camp
 | `src/rangrez/report.py` | The buyer-facing lab-dip report |
 | `src/rangrez/voice.py` | Hands-free commands with Muse Voice Transcribe |
 | `src/rangrez/home.py` | Home recipes in drops of household colour |
+| `src/rangrez/preview.py` | Bulk preview with Muse Image, measured and corrected |
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
 | `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
