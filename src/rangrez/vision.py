@@ -34,6 +34,8 @@ BASE_URL = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 CARD_PROMPT = "color checker card"
 STRIP_PROMPT = "fabric strip"
 TARGET_PROMPT = "fabric swatch"
+STRIP_PROMPTS = (STRIP_PROMPT, "cotton tape", "rectangle")
+_strip_prompt_order = list(STRIP_PROMPTS)
 
 
 @dataclass
@@ -90,7 +92,7 @@ class OfflineSegmenter:
         self.boxes = boxes
 
     def segment(self, image: Image.Image, jpeg: bytes, concept: str) -> list[Instance]:
-        key = {CARD_PROMPT: "card", STRIP_PROMPT: "swatch", TARGET_PROMPT: "target"}[concept]
+        key = "swatch" if concept in STRIP_PROMPTS else {CARD_PROMPT: "card", TARGET_PROMPT: "target"}[concept]
         shape = (image.height, image.width)
         out = []
         for name in ([key] if key != "swatch" else ["swatch", "target"]):
@@ -270,8 +272,14 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     elif residual > 2:
         flags.append(f"WARN: card fit residual {residual:.1f} dE00")
 
-    fabrics = segmenter.segment(img, jpeg, STRIP_PROMPT)
-    fabrics = [f for f in fabrics if not (f.mask & card.mask).any()]
+    fabrics: list[Instance] = []
+    for prompt in list(_strip_prompt_order):  # cloth words first; shape words when the scene is plain
+        fabrics = [f for f in segmenter.segment(img, jpeg, prompt) if not (f.mask & card.mask).any()]
+        if fabrics:
+            # The rig and lighting don't change between dips: try what worked first next time.
+            _strip_prompt_order.remove(prompt)
+            _strip_prompt_order.insert(0, prompt)
+            break
     if not fabrics:
         raise RuntimeError("fabric strip not found in frame")
     # The strip hangs vertically from the dip arm: the tallest, narrowest fabric.
