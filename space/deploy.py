@@ -5,6 +5,7 @@
 Uploads only src/, pyproject.toml, uv.lock and this folder's Dockerfile and README.
 No .env, recordings or keys. After it is running, add the Space secrets in its settings:
 MODEL_API_KEY (your Meta key) and RANGREZ_LIVE_PASSCODE (any phrase you choose).
+It sets two public variables: 200 free colour reads a day for visitors, at most 5 each.
 """
 import os
 import shutil
@@ -31,6 +32,9 @@ with tempfile.TemporaryDirectory() as tmp:
     for f in ("Dockerfile", "README.md"):
         shutil.copy(ROOT / "space" / f, tmp)
     api.upload_folder(folder_path=tmp, repo_id=repo, repo_type="space", commit_message="Rangrez dashboard")
+# Public free colour reads (SAM 3.1 + the home recipe): capped so the demo can't run up a bill.
+api.add_space_variable(repo, "RANGREZ_PUBLIC_READS_PER_DAY", "200")
+api.add_space_variable(repo, "RANGREZ_PUBLIC_READS_PER_VISITOR", "5")
 print(f"https://huggingface.co/spaces/{repo}")
 for _ in range(90):
     stage = api.get_space_runtime(repo).stage

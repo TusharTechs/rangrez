@@ -44,6 +44,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
   td, th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; }
   th { color: var(--mute); font-weight: 500; }
+  .hint .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin: 0 4px; border: 1px solid #0006; }
   td .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; border: 1px solid #0006; }
   .feed { max-height: 280px; overflow: auto; font-size: 12.5px; }
   .feed div { padding: 6px 0; border-bottom: 1px dashed var(--line); }
@@ -91,6 +92,7 @@
       <div style="height:8px"></div>
       <button class="ghost" id="usePhoto">Read colour with SAM 3.1</button>
       <p class="hint" id="photoNote"></p>
+      <p class="hint" id="homeRecipe" hidden></p>
       <label for="tol">Pass tolerance (CIEDE2000)</label>
       <input type="number" id="tol" value="1.5" step="0.1" min="0.5" max="5">
       <div style="height:12px"></div>
@@ -174,6 +176,7 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
   $("rig").textContent = "rig: " + ({ sim: "simulator", serial: "hardware", assisted: "assisted (your hands)" }[c.rig] || c.rig);
   $("dyeHead").textContent = c.dyes.join(" · ") + " " + c.unit;
   $("liveBox").hidden = !c.passcode;
+  if (c.public_reads_left > 0) $("photoNote").textContent = "Try it: photograph any outfit and get its colour, plus a recipe to dye it at home.";
 });
 
 function setStatus(s) {
@@ -287,6 +290,14 @@ $("usePhoto").onclick = async () => {
   const j = await r.json();
   if (!r.ok) { $("photoNote").textContent = j.detail || "Could not read the photo."; return; }
   $("picker").value = j.hex; $("targetChip").style.background = j.hex;
+  const h = j.home_recipe;
+  if (h) {
+    const drops = Object.entries(h.drops).filter(([, n]) => n > 0).map(([d, n]) => `${n} drop${n === 1 ? "" : "s"} ${esc(d)}`).join(" · ");
+    $("homeRecipe").hidden = false;
+    $("homeRecipe").innerHTML = h.reachable
+      ? `<b>Dye it at home:</b> ${drops || "plain water"} in ${h.teaspoons} teaspoons of water. A first-dip estimate for household colours; brands vary, so dip a white cotton strip and let Rangrez correct it.`
+      : `<b>At home:</b> household blue, red and yellow can't quite reach this shade. Closest: ${drops} <span class="sw" style="background:${h.closest_hex}"></span>${h.closest_hex}.`;
+  }
   $("photoNote").textContent = {
     card: `Calibrated against the colour card: ${j.hex}`,
     paper: `Balanced against the white paper: ${j.hex}. Photograph every dip in the same spot and light.`,

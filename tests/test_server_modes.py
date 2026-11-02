@@ -58,3 +58,23 @@ def test_voice_intents_are_safe_and_simple():
     assert intent("the strip looks a bit patchy near the top") == "note"
     assert intent("it looks done but the top is patchy and darker") == "note"  # an observation, not a command
     assert intent("") == "none"
+
+
+def test_home_recipe_counts_whole_drops_and_admits_unreachable_shades():
+    from rangrez.colour import hex_to_lab
+    from rangrez.home import home_recipe
+
+    teal = home_recipe(hex_to_lab("#378382"))
+    assert teal["reachable"] and all(isinstance(n, int) for n in teal["drops"].values())
+    assert not home_recipe(hex_to_lab("#1a1a5e"))["reachable"]  # navy is beyond household inks
+
+
+def test_public_quota_limits_visitors_and_days(monkeypatch):
+    monkeypatch.setenv("RANGREZ_PUBLIC_READS_PER_DAY", "3")
+    monkeypatch.setenv("RANGREZ_PUBLIC_READS_PER_VISITOR", "2")
+    from rangrez.server import PublicQuota
+
+    q = PublicQuota()
+    assert q.allow("a") and q.allow("a") and not q.allow("a")  # per visitor
+    assert q.allow("b") and not q.allow("c")  # per day
+    assert q.left() == 0

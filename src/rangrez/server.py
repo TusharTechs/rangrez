@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -203,6 +203,39 @@ def _json_safe(value):
 LAB = Lab()
 
 
+class PublicQuota:
+    """Free colour reads on a public demo: a few per visitor and a cap per day, so it can't run up a bill."""
+
+    def __init__(self) -> None:
+        self.per_day = int(os.environ.get("RANGREZ_PUBLIC_READS_PER_DAY", "0"))
+        self.per_visitor = int(os.environ.get("RANGREZ_PUBLIC_READS_PER_VISITOR", "5"))
+        self.day, self.total, self.by_ip = "", 0, {}
+        self.lock = threading.Lock()
+
+    def allow(self, ip: str) -> bool:
+        with self.lock:
+            today = time.strftime("%Y-%m-%d")
+            if today != self.day:
+                self.day, self.total, self.by_ip = today, 0, {}
+            if self.total >= self.per_day or self.by_ip.get(ip, 0) >= self.per_visitor:
+                return False
+            self.total += 1
+            self.by_ip[ip] = self.by_ip.get(ip, 0) + 1
+            return True
+
+    def left(self) -> int:
+        with self.lock:
+            return max(0, self.per_day - (self.total if self.day == time.strftime("%Y-%m-%d") else 0))
+
+
+QUOTA = PublicQuota()
+
+
+def client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else "?")
+
+
 class StartBody(BaseModel):
     hex: str | None = None
     lab: list[float] | None = None
@@ -219,6 +252,7 @@ def index() -> FileResponse:
 def config() -> dict:
     return {"online": LAB.online, "agent": WONDER_MODEL if LAB.online else "offline policy",
             "passcode": bool(os.environ.get("RANGREZ_LIVE_PASSCODE")) and LAB.key_available,
+            "public_reads_left": QUOTA.left() if LAB.key_available else 0,
             "rig": os.environ.get("RANGREZ_RIG", "sim"), "dyes": DYES, "unit": UNIT}
 
 
@@ -238,16 +272,23 @@ def start(body: StartBody) -> dict:
 
 
 @app.post("/api/target-from-photo")
-async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabric"), passcode: str = Form("")) -> dict:
+async def target_photo(request: Request, photo: UploadFile = File(...), concept: str = Form("fabric"),
+                       passcode: str = Form("")) -> dict:
+    from .home import home_recipe
+
     jpeg = await photo.read()
+    live = LAB.live(passcode) or (LAB.key_available and QUOTA.allow(client_ip(request)))
+    if not live and LAB.key_available:
+        raise HTTPException(429, "today's free colour reads are used up: try again tomorrow, or enter the live passcode")
     try:
         from .assisted import normalise_photo
 
         photo = normalise_photo(jpeg)
-        lab, calibration = target_from_photo(photo, concept, LAB.make_segmenter(live=LAB.live(passcode)))
+        lab, calibration = await asyncio.to_thread(target_from_photo, photo, concept, LAB.make_segmenter(live=live))
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc))
-    result = {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration, "concept": concept}
+    result = {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration, "concept": concept,
+              "home_recipe": home_recipe(lab)}
     LAB.rec.pending = []  # only the latest target photo goes with the next campaign
     LAB.rec.stash("target.jpg", photo)
     LAB.target_photo = photo

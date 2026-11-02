@@ -21,6 +21,10 @@ Without the live passcode it runs the offline policy and SAM masks cached for ea
 With it, hosted **SAM 3.1** measures every photo and **Muse Wonder** runs the campaign,
 and you can read a target colour from your own photo ("match this kurta").
 
+**Photograph your outfit:** SAM 3.1 reads its colour (a few free reads a day per visitor) and
+Rangrez gives you a recipe to dye a matching cloth at home, in drops of blue, red and yellow
+household colour.
+
 One lab, shared by everyone viewing: if a campaign is running, you are watching it.
 
 Code, hardware, firmware and evaluation: https://github.com/TusharTechs/rangrez

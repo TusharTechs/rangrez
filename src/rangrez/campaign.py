@@ -132,15 +132,15 @@ class Campaign:
             g = glimmer.first_guess(self.target_lab, log=getattr(self.segmenter, "log", None))
             if g is not None:
                 d = float(delta_e_2000(self.model.predict_lab(g), self.target_lab))
-                cands.append(("glimmer", g, d, "Muse Glimmer fine-tuned on this lab's own dips: its first recipes "
-                              "land closer than the supplier model's (the predicted dE00 shown is the supplier model's opinion)."))
+                cands.append(("glimmer", g, d, ("Muse Glimmer fine-tuned on this lab's own dips: its first recipes "
+                              "land closer than the supplier model's (the predicted dE00 shown is the supplier model's opinion).")))
         if not self.shots and self.memory is not None and (near := self.memory.nearest(self.target_lab)):
             c0, lab0, d0 = near
             step = self._correct(c0, lab0)
             pred = float(delta_e_2000(lab0 + self._jac(c0) @ (step - c0), self.target_lab))
             self.memory_source_de = d0
-            cands.append(("lab_memory", step, pred, f"The most similar dip this lab has made (dE00 {d0:.1f} from the target), "
-                          "corrected towards it with the refitted model's sensitivity."))
+            cands.append(("lab_memory", step, pred, (f"The most similar dip this lab has made (dE00 {d0:.1f} from the target), "
+                          "corrected towards it with the refitted model's sensitivity.")))
         best = self.best
         if best is not None:
             step = self._correction_step(best)
