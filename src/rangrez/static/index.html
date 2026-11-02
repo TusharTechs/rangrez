@@ -63,7 +63,8 @@
   .tape-wrap { margin: 0 24px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 10px; box-shadow: var(--shadow); }
   .tape-wrap h2 { margin: 0 0 8px; }
   .tape { display: flex; align-items: flex-end; gap: 2px; min-height: 104px; overflow-x: auto; padding: 4px 2px 6px; }
-  .seg { position: relative; flex: 0 0 132px; display: flex; flex-direction: column; justify-content: flex-end; animation: soak 1.4s ease-out, slidein .5s ease-out; }
+  .seg { position: relative; flex: 0 0 132px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .seg.new { animation: soak 1.4s ease-out, slidein .5s ease-out; }
   .seg .cloth { height: 74px; background-color: var(--c);
       background-image: linear-gradient(180deg, #ffffff30 0, transparent 22%, transparent 70%, #00000024 100%),
         repeating-linear-gradient(45deg, #ffffff12 0 1.5px, transparent 1.5px 4px), repeating-linear-gradient(-45deg, #0000000d 0 1px, transparent 1px 5px);
@@ -84,6 +85,7 @@
   /* ---- layout ---- */
   main { display: grid; grid-template-columns: 330px minmax(0, 1fr) 330px; gap: 14px; padding: 0 24px 24px; }
   @media (max-width: 1180px) { main { grid-template-columns: 1fr 1fr; } .col-right { grid-column: span 2; } }
+  @media (max-width: 760px) { .model .job, .brand .sub { display: none; } .facts { white-space: normal; } .seg { flex-basis: 96px; } }
   @media (max-width: 760px) { main { grid-template-columns: 1fr; } .col-right { grid-column: auto; } header { padding: 12px 16px; } .models, .tape-wrap, main { padding-left: 16px; padding-right: 16px; } .tape-wrap { margin-left: 16px; margin-right: 16px; } }
   .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); min-width: 0; }
@@ -403,7 +405,7 @@ const MODELS = [
   ["image", "Muse Image", "garment preview"], ["voice", "Muse Voice", "hands-free, English and Hindi"],
 ];
 const calls = {};
-$("models").innerHTML = MODELS.map(([k, n, job]) => `<span class="model" id="m-${k}" title="${esc(job)}"><i></i><b>${n}</b><span>${esc(job)}</span><span class="n" id="n-${k}"></span></span>`).join("");
+$("models").innerHTML = MODELS.map(([k, n, job]) => `<span class="model" id="m-${k}" title="${esc(job)}"><i></i><b>${n}</b><span class="job">${esc(job)}</span><span class="n" id="n-${k}"></span></span>`).join("");
 function modelKey(model) {
   const m = model.toLowerCase();
   return m.startsWith("sam") ? "sam" : m.includes("wonder") ? "wonder" : m.includes("glimmer") ? "glimmer" : m.includes("spark") ? "spark" : m.includes("image") ? "image" : m.includes("voice") ? "voice" : null;
@@ -426,8 +428,8 @@ function setDye(hex) {
 
 // ---- the tape -----------------------------------------------------------------------------
 let targetHex = null;
-function drawTape() {
-  const segs = shots.map((s) => `<div class="seg ${s.delta_e <= tolerance ? "pass" : ""}" style="--c:${s.hex}"><div class="cloth"></div><small><span>dip ${s.index}</span><b>${isFinite(s.delta_e) ? s.delta_e.toFixed(2) : "—"}</b></small></div>`);
+function drawTape(fresh) {  // fresh: the dip just measured, which soaks in
+  const segs = shots.map((s) => `<div class="seg ${s.delta_e <= tolerance ? "pass" : ""} ${s.index === fresh && !replaying ? "new" : ""}" style="--c:${s.hex}"><div class="cloth"></div><small><span>dip ${s.index}</span><b>${isFinite(s.delta_e) ? s.delta_e.toFixed(2) : "—"}</b></small></div>`);
   if (!shots.length) segs.push(`<div class="seg empty"><div class="cloth"></div><small><span>Undyed cotton: each dip becomes a segment of this tape, measured and corrected until it matches the target</span></small></div>`);
   const target = targetHex ? `<span class="arrow">→</span><div class="seg target" style="--c:${targetHex}"><div class="cloth"></div><small><span>target</span><span>${targetHex}</span></small></div>` : "";
   $("tape").innerHTML = segs.join("") + target;
@@ -542,7 +544,7 @@ es.onmessage = (msg) => {
   } else if (e.kind === "shot") {
     $("assist").hidden = true;
     if ($("status").textContent === "waiting") setStatus("running");
-    shots.push(e); drawChart(); drawTape(); setGauge(e.delta_e);
+    shots.push(e); drawChart(); drawTape(e.index); setGauge(e.delta_e);
     $("dipChip").style.background = e.hex; $("dipLabel").textContent = `dip ${e.index} · ${e.hex}`;
     $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`; $("frame").hidden = false; $("cameraEmpty").hidden = true;
     $("frameCaption").textContent = `Dip ${e.index}: measured ${e.hex}, ΔE00 ${isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "rejected"}.` + (e.flags && e.flags.length ? " " + e.flags.map((f) => f.replace(/^(NOTE|WARN): /, "")).join(" · ") : "");
