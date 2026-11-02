@@ -34,7 +34,7 @@ BASE_URL = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 CARD_PROMPT = "color checker card"
 STRIP_PROMPT = "fabric strip"
 TARGET_PROMPT = "fabric swatch"
-STRIP_PROMPTS = (STRIP_PROMPT, "cotton tape", "rectangle")
+STRIP_PROMPTS = ("fabric", "cloth", STRIP_PROMPT, "cotton tape", "rectangle")
 PAPER_PROMPT = "white paper"
 PAPER_PROMPTS = (PAPER_PROMPT, "sheet of paper", "white rectangle")
 _paper_prompt_order = list(PAPER_PROMPTS)
@@ -51,6 +51,13 @@ class Instance:
     def aspect(self) -> float:
         l, t, r, b = self.box
         return (b - t) / max(1, r - l)
+
+    @property
+    def elongation(self) -> float:
+        """Long side over short side, whichever way the strip lies."""
+        l, t, r, b = self.box
+        w, h = max(1, r - l), max(1, b - t)
+        return max(w, h) / min(w, h)
 
     @property
     def centre(self) -> tuple[float, float]:
@@ -266,7 +273,7 @@ def _white_balance(lin: np.ndarray, paper: Instance | None, fabrics: list[Instan
     white = np.median(lin[bare], axis=0)
     target = srgb_to_linear(np.full(3, PAPER_SRGB))
     M = np.vstack([np.diag(target / np.maximum(white, 1e-4)), np.zeros((1, 3))])
-    return M, ["WARN: no colour card; white-paper balance (about 2-3 dE00 less precise)"]
+    return M, ["WARN: no colour card; white-paper balance. Absolute colour may be off by up to ~5 dE00, but dips and target shot under the same light compare fairly"]
 
 
 def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: int = 0) -> Measurement:
@@ -321,8 +328,8 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     if card is None:
         M, f0 = _white_balance(lin, paper, fabrics)
         flags += f0
-    # The strip hangs vertically from the dip arm: the tallest, narrowest fabric.
-    strip = max(fabrics, key=lambda i: i.aspect)
+    # The test strip is the most elongated piece of cloth, lying either way.
+    strip = max(fabrics, key=lambda i: i.elongation)
     lab, lab_sd, n, f2 = _lab_of_region(lin, strip.mask, M, rng)
     flags += f2
 
@@ -339,34 +346,44 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     return Measurement(lab, lab_sd, residual, n, flags, ref_box, strip.box, target_lab)
 
 
-def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, bool]:
+def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, str]:
     """Lab of the named object in a customer's photo (e.g. "teal kurta").
 
     If the photo also shows the colour card, the result is calibrated;
-    otherwise it is the photo's own sRGB, which is only as good as their camera.
-    Returns (lab, calibrated).
+    with white paper in view it is white-balanced the same way dips are; otherwise
+    it is the photo's own sRGB. Returns (lab, calibration) with calibration one of
+    "card", "paper" or "none".
     """
     img, srgb = decode(jpeg)
     lin = srgb_to_linear(srgb)
     rng = np.random.default_rng(0)
-    objects = segmenter.segment(img, jpeg, concept)
+    objects: list[Instance] = []
+    # The customer's own word first ("kurta"), then generic cloth words SAM knows well.
+    for prompt in dict.fromkeys([concept, "fabric", "cloth", "garment"]):
+        objects = segmenter.segment(img, jpeg, prompt)
+        if objects:
+            break
     if not objects:
-        raise RuntimeError(f"could not find '{concept}' in the photo")
+        raise RuntimeError(f"could not find '{concept}' or any fabric in the photo")
     obj = max(objects, key=lambda i: i.mask.sum())
-    M = np.vstack([np.eye(3), np.zeros((1, 3))])
-    calibrated = False
-    try:
-        cards = segmenter.segment(img, jpeg, CARD_PROMPT)
-    except Exception:
-        cards = []
+    cards = segmenter.segment(img, jpeg, CARD_PROMPT)
     if cards:
         from .colour import fit_colour_correction
 
         card = max(cards, key=lambda i: i.mask.sum())
         M = fit_colour_correction(_patch_samples(lin, _card_inner_box(card)), reference_linear())
-        calibrated = True
+        mode = "card"
+    else:
+        paper = None
+        for prompt in list(_paper_prompt_order):
+            papers = [p for p in segmenter.segment(img, jpeg, prompt) if p.mask.sum() > obj.mask.sum()]
+            if papers:
+                paper = max(papers, key=lambda i: i.mask.sum())
+                break
+        M, _ = _white_balance(lin, paper, objects)
+        mode = "paper" if paper is not None else "none"
     lab, _, _, _ = _lab_of_region(lin, obj.mask, M, rng)
-    return lab, calibrated
+    return lab, mode
 
 
 def overlay(jpeg: bytes, m: Measurement) -> bytes:

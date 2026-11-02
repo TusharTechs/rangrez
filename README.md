@@ -78,7 +78,7 @@ RANGREZ_RIG=assisted RANGREZ_DYES=home RANGREZ_HOST=0.0.0.0 uv run rangrez-lab
 4. Dip, dry, lay the strip on the same paper under the same light, and send the photo.
 5. SAM 3.1 measures it and Muse Wonder decides the next dip.
 
-Without the colour card, Rangrez white-balances against the paper. That is about 2–3 ΔE00 less precise, and every reading says so.
+Without the colour card, Rangrez white-balances against the paper. Absolute colour can then be off by up to about 5 ΔE00. Matching still works, because the target and every dip are photographed on the same paper under the same light, so the error is shared. Every reading says which calibration it used.
 
 On the real rig, see [hardware/BUILD.md](hardware/BUILD.md):
 

@@ -162,10 +162,12 @@ def start(body: StartBody) -> dict:
 async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabric")) -> dict:
     jpeg = await photo.read()
     try:
-        lab, calibrated = target_from_photo(jpeg, concept, LAB.make_segmenter())
-    except RuntimeError as exc:
+        from .assisted import normalise_photo
+
+        lab, calibration = target_from_photo(normalise_photo(jpeg), concept, LAB.make_segmenter())
+    except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc))
-    return {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibrated": calibrated}
+    return {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration}
 
 
 @app.post("/api/assist/photo")

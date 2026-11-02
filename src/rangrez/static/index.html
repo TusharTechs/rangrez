@@ -265,7 +265,11 @@ $("usePhoto").onclick = async () => {
   const j = await r.json();
   if (!r.ok) { $("photoNote").textContent = j.detail || "Could not read the photo."; return; }
   $("picker").value = j.hex; $("targetChip").style.background = j.hex;
-  $("photoNote").textContent = j.calibrated ? `Calibrated against the colour card: ${j.hex}` : `Read ${j.hex} from the photo (uncalibrated: put the colour card in the photo for accuracy).`;
+  $("photoNote").textContent = {
+    card: `Calibrated against the colour card: ${j.hex}`,
+    paper: `Balanced against the white paper: ${j.hex}. Photograph every dip in the same spot and light.`,
+    none: `Read ${j.hex} from the photo, uncalibrated: put white paper or the colour card in the shot.`,
+  }[j.calibration];
 };
 
 $("start").onclick = async () => {
