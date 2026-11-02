@@ -17,16 +17,3 @@ build/
 runs/
 captures/
 *.log
-
-# Private research, competitor analysis and judging material (never publish)
-research/
-notes/
-private/
-judge/
-competitors/
-*.research.md
-*_research.*
-*competitor*
-
-# Local editor/agent tooling
-.claude/
