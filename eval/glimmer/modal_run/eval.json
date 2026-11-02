@@ -1,0 +1,34 @@
+{
+  "supplier model (today's first dip)": {
+    "median": 4.1,
+    "mean": 4.34,
+    "p90": 8.52,
+    "under_3": 0.38,
+    "answered": 100,
+    "n": 100
+  },
+  "model refitted to 400 of the lab's dips": {
+    "median": 2.05,
+    "mean": 2.14,
+    "p90": 3.56,
+    "under_3": 0.78,
+    "answered": 100,
+    "n": 100
+  },
+  "Muse Glimmer 30B, base": {
+    "median": 11.38,
+    "mean": 11.27,
+    "p90": 19.4,
+    "under_3": 0.08,
+    "answered": 60,
+    "n": 100
+  },
+  "Muse Glimmer 30B, tuned": {
+    "median": 0.92,
+    "mean": 1.02,
+    "p90": 1.76,
+    "under_3": 0.96,
+    "answered": 100,
+    "n": 100
+  }
+}

@@ -24,10 +24,10 @@
     "n": 100
   },
   "Muse Glimmer 30B, tuned": {
-    "median": 1.59,
-    "mean": 1.78,
-    "p90": 3.46,
-    "under_3": 0.88,
+    "median": 0.92,
+    "mean": 1.02,
+    "p90": 1.76,
+    "under_3": 0.96,
     "answered": 100,
     "n": 100
   }

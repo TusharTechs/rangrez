@@ -32,7 +32,7 @@ target colour ──► Muse Wonder (lead colourist)
 | --- | --- |
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
-| **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on Fireworks on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. The weights are published |
+| **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. First-dip error falls from 4.10 to 0.92 ΔE00. The weights are published |
 
 ### Engineering choices
 
@@ -173,16 +173,21 @@ Reading a garment's colour from a customer's photo is the weakest step. A folded
 
 ## Glimmer: the lab's first dip
 
-The supplier's model knows the dyes in general, not this dye lot through this camera. Muse Glimmer 30B was fine-tuned with LoRA on Fireworks Serverless Training. The data was the lab's own records: 2,900 dips, each the recipe dipped and the colour SAM 3.1 measured on the cloth in a real-looking photo. That was 364 steps, rank 8, 2 epochs, free under Fireworks' Glimmer promotion. Its first recipes were then scored on 100 held-out targets by the colour they really dye (`uv run python eval/glimmer.py score`):
+The supplier's model knows the dyes in general, not this dye lot through this camera. Muse Glimmer 30B was fine-tuned with LoRA on the lab's own records: 2,900 dips, each the recipe dipped and the colour SAM 3.1 measured on the cloth in a real-looking photo. Its first recipes were then scored on 100 held-out targets by the colour they really dye (`uv run python eval/glimmer.py score <run>`):
 
 | First dip from | Median ΔE00 | p90 | Under 3 |
 | --- | --- | --- | --- |
 | Supplier model (the lab's default) | 4.10 | 8.52 | 38% |
 | Classical model refitted to 400 of the lab's dips | 2.05 | 3.56 | 78% |
 | Muse Glimmer 30B, base | 11.38 | 19.40 | 8% (40 answers still reasoning at 2,048 tokens) |
-| **Muse Glimmer 30B, fine-tuned** | **1.59** | **3.46** | **88%** |
+| Muse Glimmer 30B, LoRA on Fireworks Serverless Training | 1.59 | 3.46 | 88% |
+| **Muse Glimmer 30B, LoRA on Modal (published weights)** | **0.92** | **1.76** | **96%** |
 
-The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set to a Fireworks deployment, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. The base and tuned answers, the training metrics and the dataset are in `eval/glimmer/`. The LoRA adapter is published on Hugging Face. The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
+Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, learning rate 1e-4, 360 steps.
+- **Fireworks:** free under the Glimmer promotion. Fireworks did not let this account download the weights.
+- **Modal:** one H100, 18 minutes, bf16 LoRA on the text model's attention and MLP layers (`eval/glimmer_modal.py`). These are the weights that are published.
+
+The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. Answers, training curves and the dataset are in `eval/glimmer/`. The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
 
 ## Repository
 
@@ -203,7 +208,7 @@ The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set to a Firewo
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
 | `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
-| `eval/glimmer.py`, `eval/glimmer/` | Glimmer's training data, fine-tune, evaluation and publishing |
+| `eval/glimmer.py`, `eval/glimmer_modal.py`, `eval/glimmer/` | Glimmer's training data, fine-tunes (Fireworks, Modal), evaluation and publishing |
 | `src/rangrez/glimmer.py` | Glimmer's first-dip proposal in the lab |
 | `space/` | The Hugging Face Space (dashboard on the simulator; live models behind a passcode) |
 
