@@ -106,7 +106,8 @@
       <div style="height:8px"></div>
       <button class="ghost" id="stop">Stop</button>
       <div style="height:8px"></div>
-      <button class="ghost" id="handsFree" aria-pressed="false">Hands-free voice: off</button>
+      <div class="row"><button class="ghost" id="handsFree" aria-pressed="false">Hands-free voice: off</button>
+        <select id="lang" aria-label="Voice language"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
       <p class="hint" id="voiceNote">Say "done" when the strip is dry, "repeat", or "stop". Anything else goes to the colourist's notebook.</p>
     </section>
     <section>
@@ -238,7 +239,7 @@ es.onmessage = (msg) => {
     $("de").textContent = "—"; $("deBox").classList.remove("pass");
     setStatus("running");
   } else if (e.kind === "assist") {
-    if (handsFree && !replaying) say(`Dip ${e.index}. ` + Object.entries(e.amounts).filter(([, v]) => +v > 0).map(([d, v]) => `${v} ${e.unit} of ${d}`).join(", ") + `. Dip for ${e.dip_seconds} seconds. Say done when the strip is dry and on the paper.`);
+    if (handsFree && !replaying) say(instructions(e));
     $("assist").hidden = false;
     $("assistTitle").textContent = `Your turn: dip ${e.index}`;
     $("amounts").innerHTML = Object.entries(e.amounts).map(([d, v]) => `<div class="amount"><b>${v}</b><small>${e.unit} ${esc(d)}</small></div>`).join("");
@@ -342,10 +343,19 @@ $("previewBtn").onclick = async () => {
   $("previewImg").src = `/api/preview.jpg?t=${Date.now()}`; $("previewImg").hidden = false;
   $("previewNote").textContent = `Dip ${j.dip}'s shade on the customer's garment. Muse Image's first attempt was ΔE00 ${j.raw_de00} off; measured and corrected, it is now ${j.de00}. For the eye: the dip is the evidence.`;
 };
+const DYE_HI = { blue: "नीला", red: "लाल", yellow: "पीला", turquoise: "फ़िरोज़ी", fuchsia: "रानी", "lemon yellow": "नींबू पीला" };
+function instructions(e) {
+  const parts = Object.entries(e.amounts).filter(([, v]) => +v > 0);
+  if ($("lang").value === "hi")
+    return `डिप ${e.index}। ` + parts.map(([d, v]) => `${DYE_HI[d] || d} ${v} ${e.unit === "drops" ? "बूँद" : "एमएल"}`).join(", ") + `। ${e.dip_seconds} सेकंड डुबोइए। कपड़ा सूखकर कागज़ पर रखें, तो 'हो गया' बोलिए।`;
+  return `Dip ${e.index}. ` + parts.map(([d, v]) => `${v} ${e.unit} of ${d}`).join(", ") + `. Dip for ${e.dip_seconds} seconds. Say done when the strip is dry and on the paper.`;
+}
 function say(text) {
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = $("lang").value === "hi" ? "hi-IN" : "en-IN";
+  speechSynthesis.speak(u);
 }
 function wav16k(samples, rate) {
   const ratio = rate / 16000, n = Math.floor(samples.length / ratio), pcm = new Int16Array(n);
@@ -360,7 +370,7 @@ function wav16k(samples, rate) {
 }
 async function sendTurn(blob) {
   const form = new FormData();
-  form.append("audio", blob, "turn.wav"); form.append("passcode", $("passcode").value);
+  form.append("audio", blob, "turn.wav"); form.append("passcode", $("passcode").value); form.append("lang", $("lang").value);
   $("voiceNote").textContent = "Transcribing with Muse Voice Transcribe…";
   const r = await fetch("/api/voice", { method: "POST", body: form });
   const j = await r.json();
@@ -396,7 +406,7 @@ $("handsFree").onclick = async () => {
   $("handsFree").setAttribute("aria-pressed", handsFree);
   $("handsFree").textContent = `Hands-free voice: ${handsFree ? "listening" : "off"}`;
   if (handsFree) {
-    try { await startListening(); $("voiceNote").textContent = "Listening. Say \"done\", \"repeat\" or \"stop\"."; }
+    try { await startListening(); $("voiceNote").textContent = $("lang").value === "hi" ? "सुन रहे हैं। बोलिए: \"हो गया\", \"फिर से\" या \"बंद करो\"।" : "Listening. Say \"done\", \"repeat\" or \"stop\"."; }
     catch (err) { handsFree = false; $("handsFree").textContent = "Hands-free voice: off"; $("voiceNote").textContent = "Microphone unavailable: " + err.message; }
   } else if (mic) { mic.stream.getTracks().forEach((t) => t.stop()); mic.ctx.close(); mic = null; }
 };

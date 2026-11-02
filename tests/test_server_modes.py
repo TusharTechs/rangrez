@@ -78,3 +78,13 @@ def test_public_quota_limits_visitors_and_days(monkeypatch):
     assert q.allow("a") and q.allow("a") and not q.allow("a")  # per visitor
     assert q.allow("b") and not q.allow("c")  # per day
     assert q.left() == 0
+
+
+def test_hindi_voice_commands():
+    from rangrez.voice import instructions, intent
+
+    assert intent("हो गया।") == "photo" and intent("फोटो लो।") == "photo" and intent("ho gaya") == "photo"
+    assert intent("फिर से बताओ।") == "repeat" and intent("बंद करो") == "stop" and intent("रुक जाओ") == "stop"
+    assert intent("कपड़ा ऊपर से थोड़ा धब्बेदार है।") == "note"
+    w = {"index": 2, "amounts": {"blue": 12, "red": 0, "yellow": 4}, "unit": "drops", "dip_seconds": 90}
+    assert instructions(w, "hi").startswith("डिप 2। नीला 12 बूँद, पीला 4 बूँद।")

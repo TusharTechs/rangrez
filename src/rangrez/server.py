@@ -326,18 +326,19 @@ def assist_webcam() -> dict:
 
 
 @app.post("/api/voice")
-async def voice(audio: UploadFile = File(...), passcode: str = Form("")) -> dict:
+async def voice(audio: UploadFile = File(...), passcode: str = Form(""), lang: str = Form("en")) -> dict:
     """One spoken turn from the hands-free dashboard: transcribe it, then do at most one safe thing."""
-    from .voice import intent, transcribe
+    from .voice import SAY, instructions, intent, transcribe
 
     if not LAB.live(passcode):
         raise HTTPException(403, "voice needs the Meta models: set MODEL_API_KEY, or enter the live passcode")
+    lang = lang if lang in SAY else "en"
     wav = await audio.read()
     try:
-        text = await asyncio.to_thread(transcribe, wav, LAB.log)
+        text = await asyncio.to_thread(transcribe, wav, LAB.log, lang)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
-    act = intent(text)
+    act, say = intent(text), SAY[lang]
     c, result = LAB.campaign, ""
     rig = getattr(c, "rig", None)
     waiting = getattr(rig, "waiting", None)
@@ -345,25 +346,20 @@ async def voice(audio: UploadFile = File(...), passcode: str = Form("")) -> dict
         if waiting and hasattr(rig, "capture"):
             try:
                 rig.provide(await asyncio.to_thread(rig.capture))
-                result = "Photo taken. Measuring."
-            except (RuntimeError, ValueError) as exc:
-                result = f"Could not take the photo ({exc}). Send one from your phone."
+                result = say["photo"]
+            except (RuntimeError, ValueError):
+                result = say["photo_failed"]
         else:
-            result = "Nothing to photograph right now."
+            result = say["no_photo"]
     elif act == "stop":
         stop()
-        result = "Stopped."
+        result = say["stopped"]
     elif act == "repeat":
-        result = speakable(waiting) if waiting else "No dip is waiting."
+        result = instructions(waiting, lang) if waiting else say["no_dip"]
     elif act == "note" and c is not None:
         c.note(text, who="dyer")
-        result = "Noted for the colourist."
+        result = say["noted"]
     return {"transcript": text, "intent": act, "result": result}
-
-
-def speakable(w: dict) -> str:
-    amounts = ", ".join(f"{v} {w['unit']} of {d}" for d, v in w["amounts"].items() if float(v) > 0)
-    return f"Dip {w['index']}. {amounts}. Dip for {w['dip_seconds']} seconds. Say done when the strip is dry and on the paper."
 
 
 @app.post("/api/preview")
