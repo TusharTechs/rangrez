@@ -134,6 +134,7 @@ class Lab:
             q.put({"kind": "reset"})
             for event in self.history:
                 q.put(event)
+            q.put({"kind": "replayed"})  # live events from here on (the page may act on them, e.g. speak)
             self.subscribers.append(q)
         return q
 
@@ -276,6 +277,47 @@ def assist_webcam() -> dict:
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(409, str(exc))
     return {"ok": True}
+
+
+@app.post("/api/voice")
+async def voice(audio: UploadFile = File(...), passcode: str = Form("")) -> dict:
+    """One spoken turn from the hands-free dashboard: transcribe it, then do at most one safe thing."""
+    from .voice import intent, transcribe
+
+    if not LAB.live(passcode):
+        raise HTTPException(403, "voice needs the Meta models: set MODEL_API_KEY, or enter the live passcode")
+    wav = await audio.read()
+    try:
+        text = await asyncio.to_thread(transcribe, wav, LAB.log)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    act = intent(text)
+    c, result = LAB.campaign, ""
+    rig = getattr(c, "rig", None)
+    waiting = getattr(rig, "waiting", None)
+    if act == "photo":
+        if waiting and hasattr(rig, "capture"):
+            try:
+                rig.provide(await asyncio.to_thread(rig.capture))
+                result = "Photo taken. Measuring."
+            except (RuntimeError, ValueError) as exc:
+                result = f"Could not take the photo ({exc}). Send one from your phone."
+        else:
+            result = "Nothing to photograph right now."
+    elif act == "stop":
+        stop()
+        result = "Stopped."
+    elif act == "repeat":
+        result = speakable(waiting) if waiting else "No dip is waiting."
+    elif act == "note" and c is not None:
+        c.note(text, who="dyer")
+        result = "Noted for the colourist."
+    return {"transcript": text, "intent": act, "result": result}
+
+
+def speakable(w: dict) -> str:
+    amounts = ", ".join(f"{v} {w['unit']} of {d}" for d, v in w["amounts"].items() if float(v) > 0)
+    return f"Dip {w['index']}. {amounts}. Dip for {w['dip_seconds']} seconds. Say done when the strip is dry and on the paper."
 
 
 @app.post("/api/stop")

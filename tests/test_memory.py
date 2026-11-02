@@ -40,5 +40,5 @@ def test_nearest_remembered_dip(tmp_path):
     m = LabMemory(tmp_path / "m.json")
     m.record_dip([1, 0, 0], [60, -20, -10], "c1")
     m.record_dip([0, 1, 0], [55, 40, 0], "c1")
-    conc, lab, de = m.nearest(np.array([56, 38, 1]))
+    conc, _, de = m.nearest(np.array([56, 38, 1]))
     assert list(conc) == [0, 1, 0] and de < 3

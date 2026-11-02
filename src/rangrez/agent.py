@@ -38,6 +38,8 @@ You control the lab only through tools. Rules:
 - Far from the target, trust model_inverse. Once the best dip is within about dE00 6, prefer colourist_correction:
   the model always predicts a perfect match but cannot capture everything about this dye lot (saturation, lot strength),
   while the correction is learned from real dips.
+- dyer_notes in the state are what the person at the bench said they see (e.g. "patchy", "darker than the
+  customer's cloth"). Take them seriously, but measurements decide; say how a note changed your plan.
 - If a shot is flagged REJECT, do not trust its colour; re-run or change something and say what.
 - Write one short notebook entry (write_note) per shot: hypothesis, what you changed, what you expect.
 - If dips at the concentration cap still miss, the shade is outside this dye set's gamut: say so and report the closest dip.

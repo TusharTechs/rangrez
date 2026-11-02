@@ -89,6 +89,7 @@ class Campaign:
             "history": [self._shot_summary(s) for s in self.shots],
             "model_gains": dict(zip(DYES, np.round(self.model.gains, 3).tolist())),
             "stock_ml": dict(zip(DYES, np.round(self.rig.inventory.stock_ml, 1).tolist())),
+            "dyer_notes": [n["text"] for n in self.notebook if n["who"] == "dyer"][-5:],
             "status": self.status,
         }
 

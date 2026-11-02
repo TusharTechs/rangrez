@@ -48,3 +48,13 @@ def test_report_renders_a_campaign(monkeypatch):
     run_deterministic(c)
     page = render(c, agent="offline policy", api_calls=0)
     assert "PASS" in page and "Buyer approval" in page and page.count("<tr>") >= len(c.shots) + 4
+
+
+def test_voice_intents_are_safe_and_simple():
+    from rangrez.voice import intent
+
+    assert intent("Done.") == "photo" and intent("Take the photo") == "photo"
+    assert intent("repeat that please?") == "repeat" and intent("Stop the campaign.") == "stop"
+    assert intent("the strip looks a bit patchy near the top") == "note"
+    assert intent("it looks done but the top is patchy and darker") == "note"  # an observation, not a command
+    assert intent("") == "none"

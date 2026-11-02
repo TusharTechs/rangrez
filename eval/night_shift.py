@@ -45,9 +45,9 @@ def shift(memory: LabMemory | None) -> list[dict]:
         truths = []
         run = rig.run_shot
 
-        def tracked(r, _run=run):
+        def tracked(r, _run=run, _rig=rig):
             res = _run(r)
-            truths.append(rig.last_swatch_lab.copy())
+            truths.append(_rig.last_swatch_lab.copy())
             return res
 
         rig.run_shot = tracked
