@@ -1,0 +1,208 @@
+[
+  {
+    "case": "lamp_desk (paper)",
+    "target": "#4a7680",
+    "target_read_err": 1.5128591814684738,
+    "mode": "paper",
+    "status": "matched",
+    "measured": [
+      10.0,
+      5.14,
+      3.58,
+      1.43
+    ],
+    "true": [
+      10.35,
+      5.39,
+      3.65,
+      1.42
+    ],
+    "best_true": 1.42,
+    "calls": 22,
+    "failed_calls": 0,
+    "secs": 81
+  },
+  {
+    "case": "daylight_window (card)",
+    "target": "#63688d",
+    "target_read_err": 0.7666408522006788,
+    "mode": "card",
+    "status": "finished",
+    "measured": [
+      10.47,
+      8.39,
+      4.99,
+      3.17,
+      4.55,
+      2.41,
+      2.85,
+      2.39
+    ],
+    "true": [
+      10.22,
+      8.26,
+      4.89,
+      2.98,
+      4.6,
+      2.36,
+      2.91,
+      2.43
+    ],
+    "best_true": 2.43,
+    "calls": 35,
+    "failed_calls": 0,
+    "secs": 147
+  },
+  {
+    "case": "shadowy (paper)",
+    "target": "#7e8a64",
+    "target_read_err": 1.4751240170005258,
+    "mode": "paper",
+    "status": "matched",
+    "measured": [
+      17.68,
+      6.48,
+      4.86,
+      1.32
+    ],
+    "true": [
+      18.43,
+      6.54,
+      5.01,
+      1.4
+    ],
+    "best_true": 1.4,
+    "calls": 22,
+    "failed_calls": 0,
+    "secs": 78
+  },
+  {
+    "case": "tilted_phone (card)",
+    "target": "#586c73",
+    "target_read_err": 0.04805460962287392,
+    "mode": "card",
+    "status": "matched",
+    "measured": [
+      9.44,
+      5.93,
+      3.16,
+      1.46
+    ],
+    "true": [
+      9.15,
+      5.94,
+      3.16,
+      1.53
+    ],
+    "best_true": 1.53,
+    "calls": 22,
+    "failed_calls": 0,
+    "secs": 87
+  },
+  {
+    "case": "evening_warm (paper)",
+    "target": "#6a6871",
+    "target_read_err": 1.9642359498364081,
+    "mode": "paper",
+    "status": "matched",
+    "measured": [
+      14.42,
+      8.61,
+      6.22,
+      5.4,
+      3.55,
+      1.65
+    ],
+    "true": [
+      14.39,
+      8.7,
+      6.49,
+      5.65,
+      3.69,
+      1.6
+    ],
+    "best_true": 1.6,
+    "calls": 32,
+    "failed_calls": 0,
+    "secs": 142
+  },
+  {
+    "case": "kitchen_tube (card)",
+    "target": "#3d7a89",
+    "target_read_err": 0.6553809744808705,
+    "mode": "card",
+    "status": "matched",
+    "measured": [
+      11.88,
+      5.82,
+      3.08,
+      4.95,
+      1.9
+    ],
+    "true": [
+      11.71,
+      6.09,
+      2.98,
+      5.17,
+      2.01
+    ],
+    "best_true": 2.01,
+    "calls": 26,
+    "failed_calls": 0,
+    "secs": 123
+  },
+  {
+    "case": "crumpled_strip (card)",
+    "target": "#777269",
+    "target_read_err": 1.226455794298326,
+    "mode": "card",
+    "status": "matched",
+    "measured": [
+      16.77,
+      8.71,
+      4.43,
+      2.76,
+      0.95
+    ],
+    "true": [
+      16.22,
+      8.57,
+      4.42,
+      2.13,
+      1.2
+    ],
+    "best_true": 1.2,
+    "calls": 26,
+    "failed_calls": 0,
+    "secs": 131
+  },
+  {
+    "case": "vertical_strip (paper)",
+    "target": "#4f886a",
+    "target_read_err": 1.4832853009926588,
+    "mode": "paper",
+    "status": "escalated",
+    "measured": [
+      6.98,
+      5.72,
+      12.48,
+      4.61,
+      5.83,
+      4.41,
+      5.59
+    ],
+    "true": [
+      7.18,
+      5.79,
+      12.88,
+      4.69,
+      5.86,
+      4.49,
+      5.75
+    ],
+    "best_true": 4.49,
+    "calls": 31,
+    "failed_calls": 0,
+    "secs": 110
+  }
+]

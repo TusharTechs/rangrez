@@ -26,6 +26,7 @@
   - Muse Voice Transcribe takes hands-free commands in English or Hindi.
 - **Measurement:** 0.66 ΔE00 median error from a phone photo with a printed colour card.
 - **Matching:** 24/24 shades matched in a median of 2 dips; lab memory cut the first dip's error from 3.81 to 1.40 over a 40-campaign night shift.
+- **Why an agent:** Muse Wonder matched 8 of 8 live campaigns. A fixed policy with the same tools and safety rules matched 5, because it couldn't recover from an overshoot.
 - **Safety:** a deterministic gate, repeated in the firmware, means the model never drives a pump.
 - **Output:** every campaign ends in the document the buyer actually asks for: a lab-dip report with ΔE00 and CMC 2:1, options A/B/C, the recipe in % on weight of fabric and a production plan.
 
@@ -187,20 +188,21 @@ Measurement with live SAM 3.1, 44 photos (`uv run python eval/accuracy.py`):
 
 The worst readings are the phone-flash photos (5–9 ΔE00). Rangrez flags those and asks for a retake without flash. Photos with neither card nor paper are flagged as uncalibrated.
 
-Full assisted campaigns, live SAM 3.1 and Muse Wonder, household drops profile (`RANGREZ_DYES=home uv run python eval/campaigns.py`). A simulated person follows the drop counts, hidden chemistry dyes the strip, and each dried strip comes back as a realistic phone photo. The target cloth is photographed first, on the same paper.
+Full assisted campaigns, live SAM 3.1, household drops profile, 8 dips at most (`uv run python eval/campaigns.py wonder`, then `offline`). A simulated person follows the drop counts, hidden chemistry dyes the strip, and each dried strip comes back as a realistic phone photo. The target cloth is photographed first, on the same paper. The same 8 campaigns ran twice, with the same tools, safety gate and stopping rules. Once with Muse Wonder choosing each recipe, and once with a fixed hand-written policy. Each cell gives the dips used and the best dip's true ΔE00.
 
-| Scene | Reference | Dips | Agent's final ΔE00 | True final ΔE00 |
-| --- | --- | --- | --- | --- |
-| Desk lamp | paper | 4 | 1.41 | 1.42 |
-| Daylight | card | 6 | 1.31 | 1.34 |
-| Phone shadow | paper | 4 | 1.29 | 1.40 |
-| Tilted phone | card | 4 | 1.45 | 1.53 |
-| Warm bulb, bedsheet | paper | 5 | 1.31 | 1.26 |
-| Kitchen tube light | card | 5 | 1.61 | 1.72 |
-| Crumpled strip | card | 5 | 1.03 | 1.20 |
-| Bedsheet under paper | paper | 8 | 0.98 | 1.05 |
+| Scene | Reference | Muse Wonder | Fixed policy |
+| --- | --- | --- | --- |
+| Desk lamp | paper | matched, 4 dips, 1.42 | matched, 4 dips, 1.42 |
+| Daylight | card | matched, 8 dips, 1.43 | escalated after 7, 3.09 |
+| Phone shadow | paper | matched, 4 dips, 1.40 | matched, 4 dips, 1.40 |
+| Tilted phone | card | matched, 4 dips, 1.53 | matched, 4 dips, 1.53 |
+| Warm bulb, bedsheet | paper | matched, 5 dips, 1.26 | matched, 6 dips, 1.60 |
+| Kitchen tube light | card | matched, 5 dips, 2.01 | escalated after 6, 2.98 |
+| Crumpled strip | card | matched, 5 dips, 1.20 | matched, 5 dips, 1.20 |
+| Bedsheet under paper | paper | matched, 8 dips, 1.81 | escalated after 5, 5.79 |
+| **Matched** | | **8 / 8** | **5 / 8** |
 
-All 8 matched within the 2.0 tolerance, with no failed API calls; the agent's own reading agrees with the truth within 0.2. These are synthetic photos with simulated chemistry, not real dye on real cloth.
+Both policies overshot at the same dips: a correction near the dye cap came out worse than the dip before. The fixed policy then made three dips in a row without improving, so the stopping rule handed those three to a human. Muse Wonder read the notebook, changed method, and recovered. The match is called on the measured ΔE00 (under 2.0); in the kitchen case, the measured 1.92 was 2.01 in truth. We tried two hand-written fixes to the fixed policy: halving the step after an overshoot, and switching to the refitted model after one. Each reached 6/8 but lost a household shade in the 24-shade benchmark, so we kept neither. There are 8 campaigns, so treat this as an early sign, not a statistic. There were no failed API calls. These are synthetic photos with simulated chemistry, not real dye on real cloth.
 
 The whole app, end to end through the dashboard's HTTP API and in the browser, live SAM 3.1 and Muse Wonder (`eval/phone_client.py` plays the customer and the person). Every run is recorded:
 
