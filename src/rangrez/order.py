@@ -93,3 +93,30 @@ def production_plan(order: dict, recipe_conc) -> dict | None:
                        f"per {order.get('garment', 'piece')}; salt {SALT_G_PER_L} g/L and soda ash {SODA_G_PER_L} g/L, typical "
                        "for medium shades of cold reactive dye. Confirm with a bulk trial.",
     }
+
+
+def draft_reply(message: str, facts: dict, log=None) -> str:
+    """The message back to the buyer, in their language, using only the lab's numbers."""
+    from openai import OpenAI
+
+    from .vision import ApiCall
+
+    client = OpenAI(base_url="https://api.meta.ai/v1", api_key=os.environ["MODEL_API_KEY"], timeout=90, max_retries=1)
+    started = time.monotonic()
+    try:
+        r = client.chat.completions.create(
+            model=SPARK_MODEL, reasoning_effort="low",
+            messages=[{"role": "system", "content": (
+                "You write the dye house's short chat reply to a buyer about their lab dip. Reply in the same language and "
+                "script the buyer used (Hindi in Devanagari if they wrote Hindi, Hinglish if they wrote Hinglish). Use only "
+                "the facts given; never invent numbers or promises. At most 70 words, warm and plain, no markdown. Say the "
+                "lab-dip report is attached; if a preview exists, say a photo of their garment in the shade is attached.")},
+                      {"role": "user", "content": f"Buyer's message:\n{message}\n\nFacts:\n{json.dumps(facts, ensure_ascii=False)}"}])
+        text = (r.choices[0].message.content or "").strip()
+    except Exception as exc:
+        if log is not None:
+            log.add(ApiCall(SPARK_MODEL, "reply to the buyer", time.monotonic() - started, False, str(exc)[:200]))
+        raise RuntimeError(f"could not draft the reply: {exc}") from exc
+    if log is not None:
+        log.add(ApiCall(SPARK_MODEL, "reply to the buyer", time.monotonic() - started, True))
+    return text

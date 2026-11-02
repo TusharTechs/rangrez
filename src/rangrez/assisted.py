@@ -22,6 +22,10 @@ from .profiles import PROFILE
 from .rig import DYES, UNIT, Inventory, PumpPlan, Recipe, RigLimits, ShotResult, now
 
 STEP_ML = PROFILE.step_ml
+# Shown before every dip: dye stains skin and lingers in kitchenware; reactive dye baths are alkaline.
+SAFETY = ["Wear gloves, and use a glass and dropper kept for dyeing only, never again for food or drink."] + (
+    ["Soda ash (washing soda) irritates skin and eyes: no splashing, rinse at once if it touches skin."]
+    if PROFILE.key == "reactive" else [])
 MAX_SIDE_PX = 1920  # SAM 3.1 accepts up to about 4 MP; phones shoot 12+
 
 
@@ -77,6 +81,7 @@ class AssistedRig:
             "water_ml": round(float(water), 1),
             "dip_seconds": int(recipe.dip_seconds),
             "steps": [
+                *SAFETY,
                 "Rinse the glass and the dropper or syringes.",
                 *[self._amount(d, v, c) for d, v, c in zip(DYES, ml, recipe.conc) if v >= STEP_ML / 2],
                 (f"Add 4 teaspoons (20 mL) of water and stir." if UNIT == "drops" else f"Add {water:.1f} mL of water and stir for 10 seconds."),

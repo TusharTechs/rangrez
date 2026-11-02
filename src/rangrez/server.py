@@ -53,6 +53,7 @@ class Lab:
         self.target_concept = "garment"
         self.preview: dict | None = None  # Muse Image's bulk preview, measured and corrected
         self.order: dict | None = None  # the buyer's order, read by Muse Spark
+        self.order_message = ""
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -375,8 +376,38 @@ async def read_order(message: str = Form(...), passcode: str = Form("")) -> dict
         LAB.order = await asyncio.to_thread(parse_order, message[:2000], LAB.log)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
+    LAB.order_message = message[:2000]
     LAB.rec.stash("order.json", {"message": message[:2000], "order": LAB.order})
     return LAB.order
+
+
+@app.post("/api/reply")
+async def reply(passcode: str = Form("")) -> dict:
+    """Draft the chat reply to the buyer, in their language, from the lab's own numbers."""
+    from .order import draft_reply, production_plan
+    from .report import difference
+
+    c = LAB.campaign
+    if c is None or c.best is None or not LAB.order_message:
+        raise HTTPException(409, "needs the buyer's message and a campaign with at least one dip")
+    if not LAB.live(passcode):
+        raise HTTPException(403, "drafting needs the Meta models: set MODEL_API_KEY, or enter the live passcode")
+    best = c.best
+    d = difference(c.target_lab, best.measurement.lab)
+    plan = production_plan(LAB.order, best.recipe.conc) if LAB.order else None
+    facts = {
+        "result": "approved shade, within tolerance" if c.status == "matched" else f"closest dip so far ({c.status})",
+        "delta_e00": round(best.delta_e, 2), "tolerance_de00": c.tolerance, "dip_vs_target": d["words"],
+        "dips_made": len(c.shots), "order": LAB.order,
+        "production_plan": plan and {"cotton_kg": plan["fabric_kg"], "dye_bath_litres": plan["bath_litres"]},
+        "preview_photo_attached": bool(LAB.preview),
+    }
+    try:
+        text = await asyncio.to_thread(draft_reply, LAB.order_message, facts, LAB.log)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    LAB.rec.save("reply.txt", text)
+    return {"reply": text}
 
 
 @app.post("/api/preview")

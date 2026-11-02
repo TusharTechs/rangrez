@@ -143,6 +143,9 @@
       <button class="ghost" id="previewBtn" hidden>Preview the customer's garment in this shade (Muse Image)</button>
       <p class="hint" id="previewNote"></p>
       <img id="previewImg" hidden alt="The customer's garment recoloured to the dip's shade">
+      <button class="ghost" id="replyBtn" hidden>Draft the reply to the buyer (Muse Spark)</button>
+      <textarea id="replyText" rows="5" hidden aria-label="Reply to the buyer"></textarea>
+      <p class="hint" id="replyNote"></p>
     </section>
     <section>
       <h2>Camera — SAM 3.1 masks: card (yellow), strip (cyan)</h2>
@@ -257,7 +260,7 @@ es.onmessage = (msg) => {
     replaying = true;
     shots = [];
     for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
-    $("reportLink").hidden = true; $("previewBtn").hidden = true; $("previewImg").hidden = true; $("previewNote").textContent = "";
+    $("reportLink").hidden = true; $("previewBtn").hidden = true; $("replyBtn").hidden = true; $("replyText").hidden = true; $("previewImg").hidden = true; $("previewNote").textContent = "";
     $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
   } else if (e.kind === "start") {
     $("agent").textContent = "agent: " + e.agent;
@@ -308,6 +311,7 @@ es.onmessage = (msg) => {
     if (!["running", "waiting"].includes(e.status) && !replaying) setTimeout(drawLearning, 500);
     $("reportLink").hidden = ["running", "waiting"].includes(e.status) || !shots.length;
     $("previewBtn").hidden = $("reportLink").hidden || !targetFromPhoto;
+    $("replyBtn").hidden = $("reportLink").hidden || !orderRead;
     if (!["running", "waiting"].includes(e.status)) $("assist").hidden = true;
     if (e.reason) feed("notebook", `<span class="gate">${esc(e.status)}: ${esc(e.reason)}</span>`);
   } else if (e.kind === "api") {
@@ -365,7 +369,16 @@ $("useWebcam").onclick = () => sendAssist("/api/assist/webcam");
 $("stop").onclick = () => fetch("/api/stop", { method: "POST" });
 
 // -- hands-free: Muse Voice Transcribe hears the dyer; the browser reads instructions aloud ----------
-let handsFree = false, replaying = false, mic = null, targetFromPhoto = false;
+let handsFree = false, replaying = false, mic = null, targetFromPhoto = false, orderRead = false;
+$("replyBtn").onclick = async () => {
+  const form = new FormData(); form.append("passcode", $("passcode").value);
+  $("replyNote").textContent = "Muse Spark is drafting the reply in the buyer's language…";
+  const r = await fetch("/api/reply", { method: "POST", body: form });
+  const j = await r.json();
+  if (!r.ok) { $("replyNote").textContent = j.detail || "Could not draft the reply."; return; }
+  $("replyText").value = j.reply; $("replyText").hidden = false;
+  $("replyNote").textContent = "A draft: check it, then send it with the lab-dip report. Rangrez never sends messages itself.";
+};
 $("readOrder").onclick = async () => {
   const msg = $("orderMsg").value.trim();
   if (!msg) { $("orderNote").textContent = "Paste the buyer's message first."; return; }
@@ -374,7 +387,7 @@ $("readOrder").onclick = async () => {
   const r = await fetch("/api/order", { method: "POST", body: form });
   const o = await r.json();
   if (!r.ok) { $("orderNote").textContent = o.detail || "Could not read the order."; return; }
-  $("tol").value = o.tolerance_de00;
+  $("tol").value = o.tolerance_de00; orderRead = true;
   $("orderNote").textContent = `${o.quantity} ${o.quantity_unit} of ${o.garment}, ${o.fabric}` + (o.deadline ? `, by ${o.deadline}` : "") +
     `. Shade ${o.shade_strictness}: pass at ΔE00 ≤ ${o.tolerance_de00}.` + (o.lab_dip_due ? ` Lab dip due ${o.lab_dip_due}.` : "");
 };
