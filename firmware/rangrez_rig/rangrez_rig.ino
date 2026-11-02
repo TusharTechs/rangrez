@@ -9,6 +9,7 @@
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
 #include <AccelStepper.h>
+#include <esp_task_wdt.h>
 
 // ---- pins ---------------------------------------------------------------
 const int PUMP_PINS[5] = {16, 17, 18, 19, 21};  // turquoise, fuchsia, yellow, water, drain (MOSFET gates)
@@ -31,7 +32,10 @@ const float MAX_DRAIN_S = 20.0;
 const float MAX_ADVANCE_MM = 150.0;
 
 // ---- calibration (measured by `rangrez-calibrate`; ms per mL per pump) ---
+const float MS_PER_ML_COMPILED[5] = {950, 950, 950, 900, 0};
 float msPerMl[5] = {950, 950, 950, 900, 0};
+const float MAX_CALIBRATION_CHANGE = 0.20;  // a host can fine-tune a pump by ±20%, never triple its output
+const int WATCHDOG_S = 8;                    // a hung loop resets the board, which starts with everything off
 const int DIP_UP_DEG = 20, DIP_DOWN_DEG = 105;
 const float STEPS_PER_MM = 2048.0 / 94.2;  // 30 mm drive roller
 
@@ -61,6 +65,7 @@ void reply(const char* cmd, const char* error = nullptr) {
 bool waitMs(unsigned long ms) {
   unsigned long until = millis() + ms;
   while (millis() < until) {
+    esp_task_wdt_reset();
     if (estop) { allOff(); return false; }
     delay(5);
   }
@@ -77,6 +82,8 @@ bool runFor(int pin, float seconds) {
 
 void setup() {
   Serial.begin(115200);
+  esp_task_wdt_init(WATCHDOG_S, true);  // panic and reboot on a hang
+  esp_task_wdt_add(NULL);
   for (int p : PUMP_PINS) { pinMode(p, OUTPUT); digitalWrite(p, LOW); }
   pinMode(STIR_PIN, OUTPUT); pinMode(DRYER_PIN, OUTPUT); pinMode(LIGHT_PIN, OUTPUT);
   pinMode(ESTOP_PIN, INPUT);
@@ -88,6 +95,7 @@ void setup() {
 }
 
 void loop() {
+  esp_task_wdt_reset();
   if (!Serial.available()) return;
   String line = Serial.readStringUntil('\n');
   JsonDocument doc;
@@ -99,6 +107,7 @@ void loop() {
     JsonDocument out; out["fw"] = "rangrez-1"; out["estop"] = estop; out["bath_ml"] = bathMl;
     serializeJson(out, Serial); Serial.println();
   } else if (!strcmp(cmd, "reset")) {
+    if (digitalRead(ESTOP_PIN) == HIGH) return reply(cmd, "e-stop still pressed: release it first");
     estop = false; allOff(); reply(cmd);
   } else if (!strcmp(cmd, "pump")) {
     int id = doc["id"] | -1; float ml = doc["ml"] | 0.0;
@@ -131,7 +140,7 @@ void loop() {
     float mm = doc["mm"] | 0.0;
     if (mm <= 0 || mm > MAX_ADVANCE_MM) return reply(cmd, "advance mm out of range");
     tape.move((long)(mm * STEPS_PER_MM));
-    while (tape.distanceToGo() != 0) { if (estop) { allOff(); return reply(cmd, "e-stop"); } tape.run(); }
+    while (tape.distanceToGo() != 0) { esp_task_wdt_reset(); if (estop) { allOff(); return reply(cmd, "e-stop"); } tape.run(); }
     tape.disableOutputs();
     reply(cmd);
   } else if (!strcmp(cmd, "dry")) {
@@ -143,6 +152,8 @@ void loop() {
   } else if (!strcmp(cmd, "calibrate")) {
     int id = doc["id"] | -1; float ms = doc["ms_per_ml"] | 0.0;
     if (id < 0 || id > 3 || ms < 100 || ms > 5000) return reply(cmd, "bad calibration");
+    if (fabs(ms - MS_PER_ML_COMPILED[id]) > MAX_CALIBRATION_CHANGE * MS_PER_ML_COMPILED[id])
+      return reply(cmd, "calibration more than 20% from the compiled value: reflash to change it");
     msPerMl[id] = ms; reply(cmd);
   } else {
     reply(cmd, "unknown command");

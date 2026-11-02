@@ -21,7 +21,8 @@ KG_PER_PIECE = {"kurta": 0.30, "shirt": 0.25, "t-shirt": 0.18, "saree": 0.55, "d
                 "towel": 0.40, "bedsheet": 0.70, "trouser": 0.45, "dress": 0.35}
 KG_PER_METRE = 0.14  # 110 GSM poplin, 1.1 m wide, plus cutting waste
 LIQUOR_RATIO = 10  # litres of dye bath per kg of cotton
-SALT_G_PER_L, SODA_G_PER_L = 60, 20  # typical for medium shades of cold reactive dye on cotton
+# Salt and soda ash rise with shade depth (% on weight of fabric): typical reactive-dye practice.
+SALT_SODA_BY_DEPTH = [(0.5, 30, 10), (2.0, 50, 15), (4.0, 70, 20), (float("inf"), 80, 20)]
 
 SCHEMA = {
     "type": "object",
@@ -83,15 +84,18 @@ def production_plan(order: dict, recipe_conc) -> dict | None:
         return None
     kg = fabric_kg(order)
     litres = kg * LIQUOR_RATIO
+    depth = float(sum(recipe_conc)) * LIQUOR_RATIO / 10  # % on weight of fabric: g/L x L/kg / 10
+    salt, soda = next((s, a) for limit, s, a in SALT_SODA_BY_DEPTH if depth <= limit)
     return {
         "fabric_kg": round(kg, 1),
         "bath_litres": round(litres),
         "dye_g": {d: round(float(c) * litres) for d, c in zip(DYES, recipe_conc)},
-        "salt_kg": round(SALT_G_PER_L * litres / 1000, 1),
-        "soda_ash_kg": round(SODA_G_PER_L * litres / 1000, 1),
+        "shade_depth_owf": round(depth, 2),
+        "salt_kg": round(salt * litres / 1000, 1),
+        "soda_ash_kg": round(soda * litres / 1000, 1),
         "assumptions": f"{LIQUOR_RATIO}:1 liquor ratio; {KG_PER_PIECE.get(order.get('garment', '').lower().rstrip('s'), 0.30)} kg "
-                       f"per {order.get('garment', 'piece')}; salt {SALT_G_PER_L} g/L and soda ash {SODA_G_PER_L} g/L, typical "
-                       "for medium shades of cold reactive dye. Confirm with a bulk trial.",
+                       f"per {order.get('garment', 'piece')}; a {depth:.1f}% shade, so salt {salt} g/L and soda ash {soda} g/L, "
+                       "typical for reactive dye at that depth. Indicative until calibrated with your own lab-to-bulk factor.",
     }
 
 

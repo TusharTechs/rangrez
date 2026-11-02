@@ -34,6 +34,20 @@ def prompt(lab) -> str:
     return f"Target L* {L:.1f}, a* {a:.1f}, b* {b:.1f} ({lab_to_hex(np.array([L, a, b]))}). First dip recipe?"
 
 
+def notebook_prompt(lab, neighbours) -> str:
+    """Glimmer v2: the target plus the most similar dips this lab has made (recipe -> measured colour)."""
+    lines = [prompt(lab).replace(" First dip recipe?", "")]
+    if neighbours:
+        lines.append("The lab's most similar past dips (recipe -> measured L*a*b*):")
+        for conc, nlab in neighbours:
+            recipe = ", ".join(f"{d} {float(c):g}" for d, c in zip(PROFILE.names, conc))
+            lines.append(f"- {recipe} -> {float(nlab[0]):.1f}, {float(nlab[1]):.1f}, {float(nlab[2]):.1f}")
+    else:
+        lines.append("The lab has no similar past dips yet.")
+    lines.append("First dip recipe?")
+    return "\n".join(lines)
+
+
 def answer(conc) -> str:
     return json.dumps({d: round(float(c), 2) for d, c in zip(PROFILE.names, conc)})
 

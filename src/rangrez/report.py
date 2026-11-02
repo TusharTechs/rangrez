@@ -15,11 +15,12 @@ import time
 
 import numpy as np
 
-from .colour import delta_e_2000, lab_to_hex
+from .colour import delta_e_2000, delta_e_cmc, lab_to_hex
 from .profiles import PROFILE
 from .rig import DYES, UNIT
 
 LIQUOR_RATIO = 10  # litres of dye bath per kg of cotton (1:10), typical for exhaust dyeing
+UNCERTAINTY = {"card": 0.7, "paper": 1.2}  # median dE00 error on the 44-photo test bench (eval/accuracy.py)
 
 
 def difference(target, sample) -> dict:
@@ -101,8 +102,11 @@ def render(campaign, target_photo: bytes | None = None, agent: str = "", api_cal
     c = campaign
     best = c.best
     tol = c.tolerance
-    passed = best is not None and best.delta_e <= tol
     diff = difference(c.target_lab, best.measurement.lab) if best else None
+    paper = best is not None and any("white-paper balance" in f for f in best.measurement.flags)
+    u = UNCERTAINTY["paper" if paper else "card"]
+    passed = best is not None and best.delta_e <= tol
+    certain = best is not None and best.delta_e + u <= tol
     when = time.strftime("%d %b %Y, %H:%M")
     ref = f"RZ-{c.campaign_id[-8:].upper()}"
     rows = []
@@ -116,9 +120,17 @@ def render(campaign, target_photo: bytes | None = None, agent: str = "", api_cal
     if best is not None:
         bath = best.recipe.as_array() / PROFILE.stock_per_l * 1000  # mL of stock per litre of bath
         per_kg = bath * LIQUOR_RATIO
-        prod = "".join(f"<tr><td>{html.escape(n)}</td><td class='num'>{v:g} {UNIT}</td><td class='num'>{m:.0f} mL</td></tr>"
+        owf = (lambda v: f"<td class='num'>{v * LIQUOR_RATIO / 10:.2f}%</td>") if UNIT == "g/L" else (lambda v: "")
+        prod = "".join(f"<tr><td>{html.escape(n)}</td><td class='num'>{v:g} {UNIT}</td>{owf(v)}<td class='num'>{m:.0f} mL</td></tr>"
                        for n, v, m in zip(DYES, best.recipe.conc, per_kg))
-    verdict = ("PASS" if passed else "NOT YET") if best else "NO DIP"
+    verdict = ("PASS" if certain else "BORDERLINE" if passed else "NOT YET") if best else "NO DIP"
+    options = sorted((s for s in c.shots if s.measurement.ok), key=lambda s: s.delta_e)[:3]
+    option_rows = "".join(
+        f"<tr><td><b>{tag}</b> · dip {s.index}</td><td><span class='sw' style='background:{lab_to_hex(s.measurement.lab)}'></span>"
+        f"{lab_to_hex(s.measurement.lab)}</td><td class='num'>{s.delta_e:.2f}</td>"
+        f"<td class='num'>{delta_e_cmc(c.target_lab, s.measurement.lab):.2f}</td>"
+        f"<td>{' · '.join(f'{v:g}' for v in s.recipe.conc)}</td></tr>"
+        for tag, s in zip("ABC", options))
     flags = sorted({f for s in c.shots for f in s.measurement.flags})
     notes = "".join(f"<li>{html.escape(f)}</li>" for f in flags) or "<li>No measurement warnings.</li>"
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -145,14 +157,20 @@ img {{ border-radius: 6px; max-width: 100%; height: auto; }} .sign {{ display:fl
     <b>Target</b> {lab_to_hex(c.target_lab)} · L*a*b* {", ".join(f"{v:.1f}" for v in c.target_lab)}
     {("<div>" + _img(target_photo, 300) + "</div>") if target_photo else ""}</div>
   <div><div class="chip" style="background:{lab_to_hex(best.measurement.lab) if best else "#fff"}"></div>
-    <b>Submitted dip {best.index if best else ""}</b> {lab_to_hex(best.measurement.lab) if best else ""}
+    <b>Option A: dip {best.index if best else ""}</b> {lab_to_hex(best.measurement.lab) if best else ""}
     {("· L*a*b* " + ", ".join(f"{v:.1f}" for v in best.measurement.lab)) if best else ""}</div>
   <div><div class="verdict">{verdict}</div>
-    {f'<div>ΔE00 <b>{diff["dE00"]:.2f}</b> against a tolerance of {tol}</div><div>ΔL* {diff["dL"]:+.2f} · ΔC* {diff["dC"]:+.2f} · ΔH* {diff["dH"]:+.2f}</div><div>The dip is <b>{html.escape(diff["words"])}</b> than the target.</div>' if diff else ""}</div>
+    {f'<div>ΔE00 <b>{best.delta_e:.2f}</b> ± {u} against a tolerance of {tol} · CMC(2:1) {delta_e_cmc(c.target_lab, best.measurement.lab):.2f}</div><div>ΔL* {diff["dL"]:+.2f} · ΔC* {diff["dC"]:+.2f} · ΔH* {diff["dH"]:+.2f}</div><div>The dip is <b>{html.escape(diff["words"])}</b> than the target.</div>' if diff else ""}
+    <div class="meta">{"Within tolerance even allowing for the camera's measurement error." if certain else f"Within tolerance, but the camera's measurement error (±{u}) could take it over: confirm on a spectrophotometer." if passed else ""}</div></div>
 </div>
 
-{f'''<h2>Recipe</h2>
-<table><tr><th>Dye</th><th class="num">Bath concentration</th><th class="num">Stock for 1 kg cotton (1:{LIQUOR_RATIO})</th></tr>{prod}</table>
+{f'''<h2>Options for the buyer</h2>
+<table><tr><th>Option</th><th>Measured</th><th class="num">ΔE00</th><th class="num">CMC(2:1)</th><th>Recipe ({" · ".join(DYES)}, {UNIT})</th></tr>{option_rows}</table>
+<p class="meta">Dye houses usually send two or three dips; these are the closest. Substrate: {html.escape((order or {}).get("fabric") or "white cotton strip")}.
+Standard: {"the customer's photo" if target_photo else "the target colour given"} ({lab_to_hex(c.target_lab)}).</p>
+
+<h2>Recipe</h2>
+<table><tr><th>Dye</th><th class="num">Bath concentration</th>{"<th class='num'>% on weight of fabric (1:" + str(LIQUOR_RATIO) + ")</th>" if UNIT == "g/L" else ""}<th class="num">Stock for 1 kg cotton (1:{LIQUOR_RATIO})</th></tr>{prod}</table>
 <p class="meta">Dip {best.recipe.dip_seconds:.0f} s. Stock at {PROFILE.stock_per_l:g} {UNIT if UNIT != "drops" else "drops"} per litre. Scale-up assumes the same liquor ratio, temperature and fixation as the lab dip; confirm with a bulk trial.</p>''' if best else ""}
 
 {_impact_block(c)}
@@ -172,7 +190,9 @@ garment's pixels; it now measures {preview["measured_hex"]}, ΔE00 {preview["de0
 <h2>How it was measured</h2>
 <ul class="meta">
 <li>Each dip is dried and photographed on white paper; SAM 3.1 segments the strip and the 24-patch colour card, and a colour-correction matrix turns pixels into CIELAB (D65). Uneven light is evened out using the paper.</li>
-<li>Colour difference is CIEDE2000; ΔL*, ΔC*, ΔH* are CIELAB components (positive: lighter, brighter, counter-clockwise in hue).</li>
+<li>Colour difference is CIEDE2000 (and CMC 2:1 alongside); ΔL*, ΔC*, ΔH* are CIELAB components (positive: lighter, brighter, counter-clockwise in hue).</li>
+<li>Measurement error: about ±{UNCERTAINTY["card"]} ΔE00 with the printed colour card and ±{UNCERTAINTY["paper"]} with white paper only (median error on Rangrez's 44-photo test bench, simulated photos). A phone camera sees one light: check metamerism in a light booth under D65 and TL84 before bulk.</li>
+<li>Rangrez is a pre-screen and correction tool that gets a dye house to a good lab dip in fewer rounds; final approval stays with the buyer's instrument or light booth.</li>
 <li>Campaign run by {html.escape(agent or "Rangrez")}{f", {api_calls} live Meta API calls" if api_calls is not None else ""}; {len(c.shots)} dips; status {html.escape(c.status)}.</li>
 {notes}
 </ul>

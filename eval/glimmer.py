@@ -201,7 +201,11 @@ def cmd_score() -> None:
     recs = json.loads((ROOT / "records.json").read_text())
     by_prompt = {prompt(d["measured_lab"]): d for d in recs["train"]}
     holdout = [json.loads(line) for line in (run / "holdout.jsonl").read_text().splitlines()]
-    targets = [by_prompt[next(m["content"] for m in h["messages"] if m["role"] == "user")] for h in holdout]
+    def target_of(h: dict) -> dict:  # v1 prompts are the target line; v2 adds the lab's notebook below it
+        first = next(m["content"] for m in h["messages"] if m["role"] == "user").split("\n")[0]
+        return by_prompt[first if first.endswith("?") else first + " First dip recipe?"]
+
+    targets = [target_of(h) for h in holdout]
     held = {id(d) for d in targets}
     world = VirtualRig()
     supplier = PROFILE.nominal()

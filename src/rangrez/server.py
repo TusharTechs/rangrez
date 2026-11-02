@@ -54,6 +54,7 @@ class Lab:
         self.preview: dict | None = None  # Muse Image's bulk preview, measured and corrected
         self.order: dict | None = None  # the buyer's order, read by Muse Spark
         self.order_message = ""
+        self.replay = None  # a recorded live run being shown again
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -147,6 +148,9 @@ class Lab:
         live = self.online if live is None else live
         if self.thread and self.thread.is_alive():
             raise HTTPException(409, "a campaign is already running")
+        if self.replay is not None:
+            self.replay.stop()
+            self.replay = None
         with self.lock:  # keep only the API calls made since the last start (e.g. reading the target photo)
             self.history = [e for e in self.history if e.get("kind") == "api" and e.get("at", 0) >= self.since]
             self.since = time.time()
@@ -432,6 +436,8 @@ async def preview(passcode: str = Form("")) -> dict:
 
 @app.get("/api/preview.jpg")
 def preview_image() -> Response:
+    if LAB.replay is not None and (data := LAB.replay.file("preview.jpg")):
+        return Response(data, media_type="image/jpeg")
     if not LAB.preview:
         raise HTTPException(404)
     return Response(LAB.preview["jpeg"], media_type="image/jpeg")
@@ -439,6 +445,8 @@ def preview_image() -> Response:
 
 @app.post("/api/stop")
 def stop() -> dict:
+    if LAB.replay is not None:
+        LAB.replay.stop()
     c = LAB.campaign
     if c is None:
         return {"ok": True}
@@ -457,9 +465,49 @@ def state() -> dict:
 
 @app.get("/api/report.html")
 def report() -> HTMLResponse:
+    if LAB.replay is not None and (page := LAB.replay.file("report.html")):
+        return HTMLResponse(page)
     if LAB.campaign is None or not LAB.campaign.shots:
         raise HTTPException(404, "no dips yet")
     return HTMLResponse(LAB.report())
+
+
+@app.get("/api/samples")
+def samples() -> dict:
+    """What a first-time visitor can try without bringing anything: a photo, a buyer's message, recorded runs."""
+    from .replay import SAMPLES, runs
+
+    order = SAMPLES / "order.txt"
+    return {"photo": "/api/samples/kurta.jpg", "concept": "kurta",
+            "order": order.read_text().strip() if order.exists() else "", "runs": runs()}
+
+
+@app.get("/api/samples/kurta.jpg")
+def sample_photo() -> Response:
+    from .replay import SAMPLES
+
+    return Response((SAMPLES / "kurta.jpg").read_bytes(), media_type="image/jpeg")
+
+
+@app.post("/api/replay/{name}")
+def replay(name: str) -> dict:
+    """Show a recorded live run again: every Meta API call in it happened for real."""
+    from .replay import Replay
+
+    if LAB.thread and LAB.thread.is_alive():
+        raise HTTPException(409, "a campaign is running: watch it, or stop it first")
+    if LAB.replay is not None:
+        LAB.replay.stop()
+    try:
+        r = Replay(name, LAB.publish)
+    except FileNotFoundError:
+        raise HTTPException(404, "no such recorded run")
+    with LAB.lock:
+        LAB.history = []
+    LAB.campaign = None
+    LAB.replay = r
+    r.start()
+    return {"ok": True, "recorded": r.meta.get("started", "")}
 
 
 @app.get("/api/memory")
@@ -475,6 +523,11 @@ def memory() -> dict:
 
 @app.get("/api/shot/{index}.jpg")
 def shot_image(index: int, raw: bool = False) -> Response:
+    if LAB.replay is not None:
+        data = LAB.replay.file(f"dip{index:02d}_{'photo' if raw else 'sam'}.jpg")
+        if data is None:
+            raise HTTPException(404)
+        return Response(data, media_type="image/jpeg")
     c = LAB.campaign
     if not c or not 1 <= index <= len(c.shots):
         raise HTTPException(404)

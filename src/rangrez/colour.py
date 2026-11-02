@@ -82,6 +82,22 @@ def lab_to_hex(lab: np.ndarray) -> str:
     return "#" + "".join(f"{int(v):02x}" for v in np.clip(rgb, 0, 255))
 
 
+def delta_e_cmc(reference, sample, l: float = 2.0, c: float = 1.0) -> float:
+    """CMC l:c colour difference of sample from reference (the textile industry's other standard; 2:1 for acceptability)."""
+    L1, a1, b1 = (float(v) for v in reference)
+    L2, a2, b2 = (float(v) for v in sample)
+    C1, C2 = np.hypot(a1, b1), np.hypot(a2, b2)
+    dL, dC = L1 - L2, C1 - C2
+    dH2 = max((a1 - a2) ** 2 + (b1 - b2) ** 2 - dC**2, 0.0)
+    H1 = np.degrees(np.arctan2(b1, a1)) % 360
+    F = np.sqrt(C1**4 / (C1**4 + 1900))
+    T = 0.56 + abs(0.2 * np.cos(np.radians(H1 + 168))) if 164 <= H1 <= 345 else 0.36 + abs(0.4 * np.cos(np.radians(H1 + 35)))
+    SL = 0.511 if L1 < 16 else 0.040975 * L1 / (1 + 0.01765 * L1)
+    SC = 0.0638 * C1 / (1 + 0.0131 * C1) + 0.638
+    SH = SC * (F * T + 1 - F)
+    return float(np.sqrt((dL / (l * SL)) ** 2 + (dC / (c * SC)) ** 2 + dH2 / SH**2))
+
+
 def delta_e_2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
     """CIEDE2000 colour difference (Sharma, Wu & Dalal 2005), kL = kC = kH = 1."""
     lab1 = np.asarray(lab1, dtype=float)

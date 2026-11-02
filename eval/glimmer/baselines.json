@@ -1,0 +1,27 @@
+{
+  "k nearest neighbours (k=5)": {
+    "median": 1.07,
+    "p90": 1.83,
+    "under_3": 0.99
+  },
+  "learned forward model (MLP), inverted": {
+    "median": 0.78,
+    "p90": 1.7,
+    "under_3": 0.99
+  },
+  "Gaussian process forward model, inverted": {
+    "median": 0.77,
+    "p90": 1.64,
+    "under_3": 0.99
+  },
+  "Kubelka-Munk, 3 gains refitted to all dips": {
+    "median": 2.08,
+    "p90": 3.53,
+    "under_3": 0.77
+  },
+  "Muse Glimmer 30B, LoRA (Modal)": {
+    "median": 0.92,
+    "p90": 1.76,
+    "under_3": 0.96
+  }
+}

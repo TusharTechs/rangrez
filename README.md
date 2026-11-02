@@ -1,6 +1,8 @@
 # Rangrez
 
-**A self-driving dye lab on Meta models.** Show Rangrez a colour, and a $100 rig mixes real dye, dips real cotton, photographs it, and corrects itself until the cloth matches.
+**A self-driving dye lab on Meta models.** Show Rangrez a colour; it picks a recipe, a rig (or a person with a dropper) dyes a cotton strip, a phone photographs it, and Rangrez corrects the recipe until the cloth matches.
+
+> **Where it stands today.** The software, agent and Meta model stack are built and tested end to end. The $100 robot rig is designed (firmware, wiring, a virtual ESP32 that runs the real driver), but not yet built. Every result below comes from a simulator: hidden dye chemistry, plus real-looking phone photos made with Muse Image and recoloured to known truth. No real dye on real cloth yet; the measured numbers say so wherever they appear.
 
 *Rangrez* (रंगरेज़) means *dyer*.
 
@@ -32,10 +34,10 @@ target colour ──► Muse Wonder (lead colourist)
 | --- | --- |
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
-| **Muse Image** | Bulk preview: recolours the customer's garment photo to the approved dip's shade. Rangrez measures the preview with SAM 3.1 and corrects it, because an image model is not a colour instrument (one raw preview was 11 ΔE00 off, corrected to 0.04). It also generated the realistic test scenes |
+| **Muse Image** | Bulk preview: recolours the customer's garment photo to the approved dip's shade. Rangrez measures the preview with SAM 3.1 and corrects it, because an image model is not a colour instrument: one raw preview measured 11 ΔE00 from the dip. The corrected preview is checked by the same instrument that corrected it, so treat it as a picture, not a measurement. It also generated the realistic test scenes |
 | **Muse Voice Transcribe** | Hands-free lab in English or Hindi: the dyer says "done", "repeat" or "stop" ("हो गया", "फिर से", "बंद करो"), or describes what they see |
 | **Muse Spark** | Reads the buyer's message into an order: quantity, fabric, dates and shade strictness, which sets the pass tolerance and the production plan |
-| **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. First-dip error falls from 4.10 to 0.92 ΔE00. The weights are published |
+| **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip from the lab's own records. First-dip error falls from 4.10 (the supplier's model) to 0.92 ΔE00; a Gaussian process on the same data reaches 0.77, so Glimmer v2 reads the lab's notebook instead. The weights are published |
 
 ### Engineering choices
 
@@ -200,6 +202,11 @@ The supplier's model knows the dyes in general, not this dye lot through this ca
 | Muse Glimmer 30B, base | 11.38 | 19.40 | 8% (40 answers still reasoning at 2,048 tokens) |
 | Muse Glimmer 30B, LoRA on Fireworks Serverless Training | 1.59 | 3.46 | 88% |
 | **Muse Glimmer 30B, LoRA on Modal (published weights)** | **0.92** | **1.76** | **96%** |
+| 5 nearest past dips, averaged | 1.07 | 1.83 | 99% |
+| Small neural net trained on the same dips, inverted | 0.78 | 1.70 | 99% |
+| Gaussian process trained on the same dips, inverted | 0.77 | 1.64 | 99% |
+
+The last three rows are fair data-driven baselines on the same 2,900 dips (`eval/glimmer_baselines.py`), and **they match or beat Glimmer**. Learning a 3-colour-to-3-dye mapping does not need a 30B model, and we say so. Two further caveats: the 100-target holdout scored both fine-tunes, and the Kubelka-Munk refit is misspecified for the simulator's dye lot, not short of data. Glimmer's place is where a regression can't go: v2 reads the lab's notebook (the most similar past dips, as recipes and measured colours) and reasons from them (`eval/glimmer_notebook.py`).
 
 Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, learning rate 1e-4, 360 steps.
 - **Fireworks:** free under the Glimmer promotion. Fireworks did not let this account download the weights.

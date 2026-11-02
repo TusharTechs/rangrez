@@ -22,6 +22,11 @@ from .profiles import PROFILE
 from .rig import DYES, UNIT, Inventory, PumpPlan, Recipe, RigLimits, ShotResult, now
 
 STEP_ML = PROFILE.step_ml
+# A dip is only comparable with the final cloth after the dye has fixed and the loose dye is rinsed out.
+FIX_AND_RINSE = (["Wrap the wet strip in cling film and leave it 10 minutes so the dye fixes, then rinse it in cold "
+                  "water until the water runs clear, and once in warm soapy water."]
+                 if PROFILE.key == "reactive" else
+                 ["Rinse the strip once in cold water to take off loose colour (household colours are not wash-fast)."])
 # Shown before every dip: dye stains skin and lingers in kitchenware; reactive dye baths are alkaline.
 SAFETY = ["Wear gloves, and use a glass and dropper kept for dyeing only, never again for food or drink."] + (
     ["Soda ash (washing soda) irritates skin and eyes: no splashing, rinse at once if it touches skin."]
@@ -86,6 +91,7 @@ class AssistedRig:
                 *[self._amount(d, v, c) for d, v, c in zip(DYES, ml, recipe.conc) if v >= STEP_ML / 2],
                 (f"Add 4 teaspoons (20 mL) of water and stir." if UNIT == "drops" else f"Add {water:.1f} mL of water and stir for 10 seconds."),
                 f"Dip a fresh white cotton strip for {int(recipe.dip_seconds)} seconds.",
+                *FIX_AND_RINSE,
                 "Squeeze it gently and dry it fully with the hair dryer (about 2 minutes).",
                 "Lay it on a sheet of white paper (or next to the colour card) in the same spot and light as before, and send the photo.",
                 "If you have the customer's cloth, lay it beside the strip: Rangrez then compares them side by side under the same light.",
@@ -95,7 +101,8 @@ class AssistedRig:
     @staticmethod
     def _amount(dye: str, ml: float, conc: float) -> str:
         if UNIT == "drops":
-            return f"Add {round(conc)} drops of {dye}."
+            n = round(conc)
+            return f"Add {n} drop{'' if n == 1 else 's'} of {dye}."
         return f"Add {ml:.1f} mL of {dye}."
 
     # -- rig protocol ----------------------------------------------------------

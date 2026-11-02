@@ -33,7 +33,7 @@ image = modal.Image.debian_slim(python_version="3.12").pip_install(
 
 @app.function(gpu="H100", image=image, volumes={"/vol": volume}, timeout=4 * 3600)
 def train(rows: list[str], holdout: list[str], epochs: int = 2, batch: int = 16, micro: int = 8,
-          lr: float = 1e-4, rank: int = 8, alpha: int = 32) -> dict:
+          lr: float = 1e-4, rank: int = 8, alpha: int = 32, name: str = "adapter") -> dict:
     import math
     import random
     import time
@@ -104,7 +104,7 @@ def train(rows: list[str], holdout: list[str], epochs: int = 2, batch: int = 16,
             if step % 10 == 0 or step == 1:
                 print(json.dumps(log[-1]), flush=True)
 
-    model.save_pretrained("/vol/out/adapter")
+    model.save_pretrained(f"/vol/out/{name}")
     volume.commit()
 
     # Answer the held-out targets, greedily, exactly as the lab would ask.
@@ -121,33 +121,33 @@ def train(rows: list[str], holdout: list[str], epochs: int = 2, batch: int = 16,
         for i, e in enumerate(exs):
             text = tok.decode(out[i, enc.input_ids.shape[1]:], skip_special_tokens=True)
             preds.append({"index": h0 + i, "gold": e["messages"][-1]["content"], "answer_text": text})
-    files = {p.name: p.read_bytes() for p in Path("/vol/out/adapter").iterdir() if p.is_file()}
+    files = {p.name: p.read_bytes() for p in Path(f"/vol/out/{name}").iterdir() if p.is_file()}
     return {"log": log, "predictions": preds, "adapter": files, "trainable_params": trainable, "lora_modules": len(names),
             "minutes": round((time.time() - started) / 60, 1), "rendered_example": sample_prompt[-400:]}
 
 
 @app.local_entrypoint()
-def main(epochs: int = 2) -> None:
+def main(epochs: int = 2, data: str = "run", out: str = "modal_run", adapter: str = "adapter") -> None:
     run = ROOT / "run"  # the Fireworks run's split, for a like-for-like comparison
-    rows = (run / "train.jsonl").read_text().splitlines()
-    holdout = (run / "holdout.jsonl").read_text().splitlines()
+    rows = (ROOT / data / "train.jsonl").read_text().splitlines()
+    holdout = (ROOT / data / "holdout.jsonl").read_text().splitlines()
     print(f"training on {len(rows)} dips, {len(holdout)} held out, on Modal (H100)")
-    res = train.remote(rows, holdout, epochs=epochs)
-    out = ROOT / "modal_run"
+    res = train.remote(rows, holdout, epochs=epochs, name=adapter)
+    out = ROOT / out
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copy(run / "holdout.jsonl", out / "holdout.jsonl")
+    shutil.copy(ROOT / data / "holdout.jsonl", out / "holdout.jsonl")
     shutil.copy(run / "predictions_base.jsonl", out / "predictions_base.jsonl")  # base Glimmer, same holdout
     (out / "predictions_tuned.jsonl").write_text("".join(json.dumps(p) + "\n" for p in res["predictions"]))
     (out / "metrics.jsonl").write_text("".join(json.dumps(r) + "\n" for r in res["log"]))
-    adapter = ROOT / "adapter"
-    adapter.mkdir(parents=True, exist_ok=True)
-    for name, data in res["adapter"].items():
-        (adapter / name).write_bytes(data)
-    info = {"trained_on": "Modal, 1x H100", "base_model": f"{BASE}@{REVISION}", "method": "LoRA (PEFT), bf16",
+    adapter_dir = ROOT / adapter
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    for fname, blob in res["adapter"].items():
+        (adapter_dir / fname).write_bytes(blob)
+    info = {"trained_on": "Modal, 1x H100", "data": data, "base_model": f"{BASE}@{REVISION}", "method": "LoRA (PEFT), bf16",
             "rank": 8, "alpha": 32, "epochs": epochs, "batch": 16, "learning_rate": 1e-4, "train_rows": len(rows),
             "trainable_params": res["trainable_params"], "lora_modules": res["lora_modules"], "minutes": res["minutes"],
             "final_loss": res["log"][-1]["loss"]}
-    (adapter / "training.json").write_text(json.dumps(info, indent=2))
+    (adapter_dir / "training.json").write_text(json.dumps(info, indent=2))
     print(json.dumps(info, indent=2))
     print("rendered example tail:", res["rendered_example"])
-    print("next: uv run python eval/glimmer.py score eval/glimmer/modal_run")
+    print(f"next: uv run python eval/glimmer.py score {out}")

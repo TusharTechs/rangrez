@@ -97,5 +97,6 @@ def test_production_plan_scales_the_approved_recipe():
     assert fabric_kg(order) == 150.0  # 0.30 kg a kurta
     plan = production_plan(order, (3.2, 0.6, 0.9))
     assert plan["bath_litres"] == 1500 and plan["dye_g"]["turquoise"] == 4800
-    assert plan["salt_kg"] == 90.0 and plan["soda_ash_kg"] == 30.0
+    assert plan["shade_depth_owf"] == 4.7  # 3.2 + 0.6 + 0.9 g/L at 1:10
+    assert plan["salt_kg"] == 120.0 and plan["soda_ash_kg"] == 30.0  # deep shade: 80 g/L salt, 20 g/L soda
     assert abs(fabric_kg({"quantity": 200, "quantity_unit": "metres"}) - 28.0) < 1e-9

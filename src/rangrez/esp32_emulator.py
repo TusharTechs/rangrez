@@ -58,13 +58,18 @@ class VirtualESP32:
         self.bath_ml = 0.0
         self.dye_ml = np.zeros(3)
         self.estop = False
+        self.button_pressed = False  # the physical e-stop button, separate from the latched flag
         self.light = False
+        self.compiled_ms_per_ml = list(self.limits["msPerMl"])
         self.log: list[dict] = []
         self._write_video()  # the camera shows the empty light box until the first dip
 
     # -- e-stop button ----------------------------------------------------------
     def press_estop(self) -> None:
-        self.estop = True
+        self.estop = self.button_pressed = True
+
+    def release_estop(self) -> None:
+        self.button_pressed = False
 
     def _wait(self, seconds: float) -> bool:
         end = time.monotonic() + seconds * self.time_scale
@@ -88,6 +93,8 @@ class VirtualESP32:
         if cmd == "ping":
             return {"fw": "rangrez-1", "estop": self.estop, "bath_ml": self.bath_ml}
         if cmd == "reset":
+            if self.button_pressed:
+                return self._reply(cmd, "e-stop still pressed: release it first")
             self.estop = False
             return self._reply(cmd)
         if cmd == "pump":
@@ -146,6 +153,8 @@ class VirtualESP32:
             pid, ms = int(doc.get("id", -1)), float(doc.get("ms_per_ml", 0))
             if not 0 <= pid <= 3 or not 100 <= ms <= 5000:
                 return self._reply(cmd, "bad calibration")
+            if abs(ms - self.compiled_ms_per_ml[pid]) > 0.20 * self.compiled_ms_per_ml[pid]:
+                return self._reply(cmd, "calibration more than 20% from the compiled value: reflash to change it")
             L["msPerMl"][pid] = ms
             return self._reply(cmd)
         return self._reply(cmd, "unknown command")

@@ -52,12 +52,21 @@ def test_firmware_refuses_what_a_buggy_host_might_send(rig):
         rig.cmd({"cmd": "dip", "seconds": 900})
 
 
-def test_estop_latches_until_reset(rig):
+def test_estop_latches_until_released_and_reset(rig):
     rig.board.press_estop()
     with pytest.raises(RigError, match="e-stop latched"):
         rig.cmd({"cmd": "stir", "seconds": 2})
+    with pytest.raises(RigError, match="still pressed"):
+        rig.cmd({"cmd": "reset"})  # a reset while the button is held down does nothing
+    rig.board.release_estop()
     rig.cmd({"cmd": "reset"})
     rig.cmd({"cmd": "stir", "seconds": 2})
+
+
+def test_host_cannot_recalibrate_a_pump_far_from_the_firmware_value(rig):
+    rig.cmd({"cmd": "calibrate", "id": 0, "ms_per_ml": 1000})  # 950 compiled: a 5% tweak is fine
+    with pytest.raises(RigError, match="20%"):
+        rig.cmd({"cmd": "calibrate", "id": 0, "ms_per_ml": 3000})  # would triple the dose per mL
 
 
 def test_estop_during_a_pump_is_reported_not_counted_as_done():

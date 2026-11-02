@@ -58,3 +58,11 @@ def test_colour_correction_recovers_affine_distortion():
     camera = ref @ distortion.T + np.array([0.02, 0.01, 0.03])
     M = fit_colour_correction(camera, ref)
     assert apply_colour_correction(M, camera) == pytest.approx(ref, abs=1e-9)
+
+
+def test_cmc_matches_the_reference_implementation():
+    from rangrez.colour import delta_e_cmc
+
+    # Value from the colour-science library (colour.delta_E(..., method="CMC", l=2, c=1)).
+    assert abs(delta_e_cmc([50, 0, 30], [48, 2, 33]) - 2.3952142467027064) < 1e-9
+    assert delta_e_cmc([50, 0, 30], [50, 0, 30]) == 0
