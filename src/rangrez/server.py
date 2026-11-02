@@ -23,9 +23,10 @@ from pydantic import BaseModel
 from .agent import WONDER_MODEL, run_deterministic, run_with_wonder
 from .campaign import Campaign
 from .colour import hex_to_lab, lab_to_hex
+from .photoreal import scene_names
 from .rig import DYES, UNIT
-from .sim import VirtualRig, ground_truth_masks
-from .vision import CallLog, MuseSamSegmenter, OfflineSegmenter, target_from_photo
+from .sim import VirtualRig
+from .vision import CallLog, MuseSamSegmenter, target_from_photo
 
 load_dotenv()
 STATIC = Path(__file__).parent / "static"
@@ -65,12 +66,17 @@ class Lab:
             from .serial_rig import SerialRig
 
             return SerialRig(os.environ["RANGREZ_PORT"])
-        return VirtualRig(seed=int(time.time()) % 10_000, target_lab=target_lab)
+        # A different realistic scene and paper each campaign; the colour card in view.
+        seed = int(time.time()) % 10_000
+        scene = os.environ.get("RANGREZ_SCENE") or scene_names()[seed % len(scene_names())]
+        return VirtualRig(seed=seed, target_lab=target_lab, scene=scene)
 
-    def make_segmenter(self):
+    def make_segmenter(self, rig=None):
         if self.online and os.environ.get("RANGREZ_SEGMENTER", "sam") == "sam":
             return MuseSamSegmenter(self.log)
-        return OfflineSegmenter(ground_truth_masks())
+        if isinstance(rig, VirtualRig):
+            return rig.segmenter()  # offline: the scene's cached SAM masks
+        raise HTTPException(400, "reading a real photo needs hosted SAM 3.1: set MODEL_API_KEY")
 
     def publish(self, event: dict) -> None:
         event = _json_safe(event)
@@ -81,7 +87,7 @@ class Lab:
         if self.thread and self.thread.is_alive():
             raise HTTPException(409, "a campaign is already running")
         rig = self.make_rig(None)
-        c = Campaign(target_lab, rig, self.make_segmenter(), tolerance=tolerance)
+        c = Campaign(target_lab, rig, self.make_segmenter(rig), tolerance=tolerance)
         c.listeners.append(self.publish)
         self.campaign = c
         self.publish({"kind": "start", "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),

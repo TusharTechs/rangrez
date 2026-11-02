@@ -40,6 +40,8 @@ target colour ──► Muse Wonder (lead colourist)
 - **It learns this dye lot.** After every dip the dye model refits per-dye uptake. Near the target, Rangrez switches to a colourist-style correction: it takes the best real dip and corrects it by its measured error, using the refitted model's sensitivity. The model alone always predicts a perfect match, but no model captures everything (saturation, lot strength).
 - **It knows what it can't do.** If dips at the safety cap still miss, the shade is outside this dye set's gamut. Rangrez stops and reports the closest dip instead of wasting cotton.
 - **It escalates.** Three dips without real improvement (beyond measurement noise) hand control back to a human.
+- **It evens out the light.** A desk lamp, a window or a shadow lights the strip and the card unequally. Rangrez fits the light across the frame from the white paper, ignoring cast shadows, and divides it out before measuring. If the light is too steep (a phone flash), or the card is unreadable, it says so and asks for a retake, or falls back to the paper.
+- **It ignores the bedsheet.** SAM's "fabric" also finds the bedsheet or tablecloth under the paper. Only cloth lying on the paper is measured.
 - **It measures cloth, not liquid.** A cup of dye does not predict the shade on fabric, so every reading is taken on a dried, dyed cotton segment.
 
 ## Run it
@@ -49,7 +51,7 @@ uv sync
 uv run rangrez-lab            # http://127.0.0.1:8000
 ```
 
-Without an API key it runs the full loop in the built-in simulator with an offline policy and segmenter. The simulator has a hidden "real" dye lot, pump noise, white-balance drift and JPEG frames. Add a key to use hosted SAM 3.1 and Muse Wonder:
+Without an API key it runs the full loop in the built-in simulator with an offline policy and SAM masks cached for each scene. The simulator has a hidden "real" dye lot and pump noise, and every dip comes back as a real-looking phone photo (see below). Add a key to use hosted SAM 3.1 and Muse Wonder:
 
 ```bash
 cp .env.example .env          # set MODEL_API_KEY
@@ -96,33 +98,45 @@ The tests cover:
 - the CIEDE2000 reference pairs;
 - colour-card correction;
 - the Kubelka-Munk model;
-- measurement accuracy on rendered frames against the simulator's hidden truth;
-- a colour card lying over the strip;
+- measurement against known truth on real-looking photos from 11 rooms and lights, with the card, with paper only, and with neither;
+- uneven lamp light, a hard phone shadow, a phone flash, a crumpled strip, a card laid over the strip, a bedsheet under the paper, and a customer's kurta;
 - the safety gate;
-- convergence on reachable shades;
+- convergence on reachable shades, every dip photographed in a different room;
 - early stopping on out-of-gamut ones.
 
 ## Does it work on real-looking photos?
 
-`eval/` holds a test bench of photo-realistic scenes: undyed cotton strips on printer paper, generated with Muse Image under desk-lamp, daylight, shadowy and tilted-phone light. SAM 3.1 masks the cloth once. Each strip is then recoloured to a known true colour while its real folds, texture and shadows are kept. The paper's true whiteness and tint are randomised and hidden from the pipeline, as with real printer paper. Exposure, white balance, sensor noise and JPEG quality vary per photo.
+Every photo in the simulator and in the tests is a real-looking phone photo. Muse Image generated 12 scenes of undyed cotton on printer paper in Indian homes:
+- a desk lamp and window daylight;
+- a kitchen tube light and a warm evening bulb;
+- a phone shadow, a phone flash and a tilted phone;
+- a crumpled strip, a strip on a bare table, a bedsheet under the paper, and a kurta.
 
-Measurement, live SAM 3.1, 24 photos (`uv run python eval/accuracy.py`):
+SAM 3.1 masked each scene once; the masks are cached in `src/rangrez/scenes/masks`. To photograph a dip, the cloth is recoloured to its true colour under the scene's own uneven light, keeping its real folds, weave and shadows. The paper's true whiteness and tint are randomised and hidden from the pipeline, as with real printer paper. Exposure, white balance, sensor noise and JPEG quality vary per photo. `uv run pytest` runs all of this offline.
 
-| Reference in the photo | Median ΔE00 | p90 | Max |
-| --- | --- | --- | --- |
-| Printed colour card | 0.33 | 0.50 | 0.54 |
-| White paper only | 1.42 | 2.09 | 2.32 |
+Measurement with live SAM 3.1, 44 photos (`uv run python eval/accuracy.py`):
 
-Full assisted campaigns, live SAM 3.1 and Muse Wonder, household drops profile (`RANGREZ_DYES=home uv run python eval/campaigns.py`). A simulated person follows the drop counts, hidden chemistry dyes the strip, and each dried strip comes back as a realistic phone photo:
+| Reference in the photo | Median ΔE00 | p90 |
+| --- | --- | --- |
+| Printed colour card | 0.66 | 2.3 |
+| White paper only | 1.17 | 5.1 |
 
-| Scene | Dips | Agent's final ΔE00 | True final ΔE00 |
-| --- | --- | --- | --- |
-| Desk lamp, paper only | 4 | 1.70 | 1.74 |
-| Daylight, colour card | 7 | 1.09 | 1.23 |
-| Shadowy, paper only | 4 | 1.74 | 1.75 |
-| Tilted phone, colour card | 5 | 0.24 | 0.23 |
+The worst readings are the phone-flash photos (5–9 ΔE00). Rangrez flags those and asks for a retake without flash. Photos with neither card nor paper are flagged as uncalibrated.
 
-All four matched within the 2.0 tolerance, with no failed API calls. In paper-only mode the target itself was read up to 2.2 ΔE00 off, yet the final cloth truly matched within 1.75: the target and the dips share the same error. These are synthetic photos with simulated chemistry, not real dye on real cloth.
+Full assisted campaigns, live SAM 3.1 and Muse Wonder, household drops profile (`RANGREZ_DYES=home uv run python eval/campaigns.py`). A simulated person follows the drop counts, hidden chemistry dyes the strip, and each dried strip comes back as a realistic phone photo. The target cloth is photographed first, on the same paper.
+
+| Scene | Reference | Dips | Agent's final ΔE00 | True final ΔE00 |
+| --- | --- | --- | --- | --- |
+| Desk lamp | paper | 4 | 1.41 | 1.42 |
+| Daylight | card | 6 | 1.31 | 1.34 |
+| Phone shadow | paper | 4 | 1.29 | 1.40 |
+| Tilted phone | card | 4 | 1.45 | 1.53 |
+| Warm bulb, bedsheet | paper | 5 | 1.31 | 1.26 |
+| Kitchen tube light | card | 5 | 1.61 | 1.72 |
+| Crumpled strip | card | 5 | 1.03 | 1.20 |
+| Bedsheet under paper | paper | 8 | 0.98 | 1.05 |
+
+All 8 matched within the 2.0 tolerance, with no failed API calls; the agent's own reading agrees with the truth within 0.2. These are synthetic photos with simulated chemistry, not real dye on real cloth.
 
 ## Repository
 
@@ -134,11 +148,12 @@ All four matched within the 2.0 tolerance, with no failed API calls. In paper-on
 | `src/rangrez/rig.py` | Recipes, the safety gate, the rig interface |
 | `src/rangrez/campaign.py` | The colourist's tools: refit, suggest, dip, escalate |
 | `src/rangrez/agent.py` | Muse Wonder tool loop, plus the offline policy |
-| `src/rangrez/sim.py` | Virtual dye lab with hidden chemistry and a rendering camera |
+| `src/rangrez/sim.py` | Virtual dye lab with hidden chemistry |
+| `src/rangrez/photoreal.py`, `scenes/` | The simulator's camera: real-looking phone photos with known true colours |
 | `src/rangrez/serial_rig.py` | Driver for the real rig |
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
-| `eval/` | Photo-realistic test scenes with known truth, accuracy and campaign benchmarks |
+| `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
 
 ## Built for
 

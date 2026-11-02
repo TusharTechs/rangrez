@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol
 
+import cv2
 import numpy as np
 from PIL import Image
 
@@ -87,30 +88,6 @@ class CallLog:
         self.calls.append(call)
         for fn in self.listeners:
             fn(call)
-
-
-def _box_mask(shape: tuple[int, int], box: tuple[int, int, int, int]) -> np.ndarray:
-    m = np.zeros(shape, dtype=bool)
-    l, t, r, b = box
-    m[t:b, l:r] = True
-    return m
-
-
-class OfflineSegmenter:
-    """Stand-in for SAM when there is no API key: knows the rig's fixed geometry."""
-
-    def __init__(self, boxes: dict[str, tuple[int, int, int, int]]):
-        self.boxes = boxes
-
-    def segment(self, image: Image.Image, jpeg: bytes, concept: str) -> list[Instance]:
-        key = "swatch" if concept in STRIP_PROMPTS else {CARD_PROMPT: "card", TARGET_PROMPT: "target"}.get(concept, "paper" if concept in PAPER_PROMPTS else concept)
-        shape = (image.height, image.width)
-        out = []
-        for name in ([key] if key != "swatch" else ["swatch", "target"]):
-            box = self.boxes.get(name)
-            if box:
-                out.append(Instance(_box_mask(shape, box), box))
-        return out
 
 
 class MuseSamSegmenter:
@@ -273,7 +250,104 @@ def _white_balance(lin: np.ndarray, paper: Instance | None, fabrics: list[Instan
     white = np.median(lin[bare], axis=0)
     target = srgb_to_linear(np.full(3, PAPER_SRGB))
     M = np.vstack([np.diag(target / np.maximum(white, 1e-4)), np.zeros((1, 3))])
-    return M, ["WARN: no colour card; white-paper balance. Absolute colour may be off by up to ~5 dE00, but dips and target shot under the same light compare fairly"]
+    return M, ["WARN: white-paper balance, no colour card. Absolute colour may be off by up to ~5 dE00, but dips and target shot on the same paper under the same light compare fairly"]
+
+
+def _find_paper(img: Image.Image, jpeg: bytes, segmenter: Segmenter) -> Instance | None:
+    for prompt in list(_paper_prompt_order):
+        papers = segmenter.segment(img, jpeg, prompt)
+        if papers:
+            _paper_prompt_order.remove(prompt)
+            _paper_prompt_order.insert(0, prompt)
+            return max(papers, key=lambda i: i.mask.sum())
+    return None
+
+
+def _on_paper(obj: Instance, paper: Instance | None) -> bool:
+    """Cloth being measured lies on the paper; a bedsheet or tablecloth spreads beyond it."""
+    if paper is None:
+        return True
+    h, w = paper.mask.shape
+    l, t, r, b = paper.box
+    tol_x, tol_y = 0.03 * w, 0.03 * h
+    ol, ot, or_, ob = obj.box
+    return ol >= l - tol_x and ot >= t - tol_y and or_ <= r + tol_x and ob <= b + tol_y
+
+
+def _cloth_in_view(objects: list[Instance], paper: Instance | None) -> list[Instance]:
+    """Drop background cloth SAM also calls "fabric", unless nothing else is left."""
+    on = [o for o in objects if _on_paper(o, paper)]
+    if paper is None:  # no paper: background cloth is what runs off three or more edges of the frame
+        h, w = objects[0].mask.shape if objects else (0, 0)
+        on = [o for o in objects if sum([o.box[0] <= 2, o.box[1] <= 2, o.box[2] >= w - 2, o.box[3] >= h - 2]) < 3]
+    return on or objects
+
+
+def _bare_paper(paper: Instance, objects: list[Instance], card_zone: np.ndarray | None) -> np.ndarray:
+    bare = paper.mask.copy()
+    for f in objects:
+        bare &= ~f.mask
+    if card_zone is not None:
+        bare &= ~card_zone
+    return _erode(bare, 6)
+
+
+def _flat_field(lin: np.ndarray, bare: np.ndarray) -> tuple[np.ndarray, list[str]]:
+    """Even out the light across the frame, using the paper as a white reference everywhere.
+
+    A desk lamp, a window or a phone flash lights the strip and the card unequally.
+    Fits a smooth (cubic in log) light field per channel to the bare paper,
+    ignoring cast shadows and stray threads, and divides it out.
+    """
+    if bare.sum() < 2000:
+        return lin, []
+    h, w = bare.shape
+    ys, xs = np.nonzero(bare)
+    pick = np.random.default_rng(0).choice(len(ys), size=min(len(ys), 6000), replace=False)
+    ys, xs = ys[pick], xs[pick]
+
+    def basis(y, x):
+        y, x = 2 * y / h - 1, 2 * x / w - 1
+        return np.stack([np.ones_like(x), x, y, x * x, x * y, y * y, x**3, x * x * y, x * y * y, y**3], axis=-1)
+
+    A = basis(ys.astype(float), xs.astype(float))
+    lum = np.log(np.maximum(lin[ys, xs], 1e-4))
+    grey = lum.mean(axis=1)
+    keep = grey > np.median(grey) + np.log(0.5)  # cast shadows are far darker than lit paper
+    for _ in range(4):  # robust: drop shadows and outliers, refit
+        coef, *_ = np.linalg.lstsq(A[keep], lum[keep], rcond=None)
+        r = (lum - A @ coef).mean(axis=1)
+        sd = 1.4826 * np.median(np.abs(r[keep] - np.median(r[keep])))  # MAD: shadows can't inflate it
+        keep = (r > -3 * sd) & (r < 3 * sd)
+    gy, gx = np.mgrid[0:h:8, 0:w:8]  # the field is smooth: evaluate coarse, then resize
+    # Beyond the paper there is no evidence: hold the edge value instead of extrapolating a cubic.
+    gy = np.clip(gy, ys.min(), ys.max()).astype(float)
+    gx = np.clip(gx, xs.min(), xs.max()).astype(float)
+    coarse = (basis(gy, gx) @ coef).astype(np.float32)
+    field = cv2.resize(coarse, (w, h), interpolation=cv2.INTER_LINEAR).astype(float)
+    field -= np.median(field[bare], axis=0)
+    gain = np.clip(np.exp(field), 0.4, 2.5)
+    spread = float(np.exp(np.percentile(field[bare].mean(axis=1), 95) - np.percentile(field[bare].mean(axis=1), 5)))
+    if spread > 6:  # a phone flash or a lamp right over the paper: too steep to even out well
+        flags = [f"WARN: very uneven light ({spread:.0f}x across the paper; flash?); colour may be off by several dE00, retake in even light without flash"]
+    else:
+        flags = [f"NOTE: evened out uneven light ({spread:.1f}x across the paper)"] if spread > 1.25 else []
+    return lin / gain, flags
+
+
+def _card_correction(lin: np.ndarray, card: Instance) -> tuple[np.ndarray, float, list[str]]:
+    from .colour import fit_colour_correction
+
+    patches = _patch_samples(lin, _card_inner_box(card))
+    ref = reference_linear()
+    M = fit_colour_correction(patches, ref)
+    corrected = np.clip(apply_colour_correction(M, patches), 0, 1)
+    residual = float(np.mean(delta_e_2000(xyz_to_lab(linear_rgb_to_xyz(corrected)), xyz_to_lab(linear_rgb_to_xyz(ref)))))
+    if residual > 4:
+        return M, residual, [f"REJECT: card fit residual {residual:.1f} dE00; light on the card is uneven or glary, retake the photo"]
+    if residual > 2:
+        return M, residual, [f"WARN: card fit residual {residual:.1f} dE00"]
+    return M, residual, []
 
 
 def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: int = 0) -> Measurement:
@@ -282,41 +356,20 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     rng = np.random.default_rng(seed)
     flags: list[str] = []
 
-    # Calibration reference, best first: the 24-patch card, else a sheet of white paper.
+    # References: the 24-patch card (colour), the sheet of white paper (light across the frame).
     cards = segmenter.segment(img, jpeg, CARD_PROMPT)
     card = max(cards, key=lambda i: i.mask.sum()) if cards else None
-    paper = None
+    paper = _find_paper(img, jpeg, segmenter)
     residual = float("nan")
-    if card is not None:
-        patches = _patch_samples(lin, _card_inner_box(card))
-        ref = reference_linear()
-        from .colour import fit_colour_correction
-
-        M = fit_colour_correction(patches, ref)
-        corrected = np.clip(apply_colour_correction(M, patches), 0, 1)
-        residual = float(np.mean(delta_e_2000(xyz_to_lab(linear_rgb_to_xyz(corrected)), xyz_to_lab(linear_rgb_to_xyz(ref)))))
-        if residual > 4:
-            flags.append(f"REJECT: card fit residual {residual:.1f} dE00")
-        elif residual > 2:
-            flags.append(f"WARN: card fit residual {residual:.1f} dE00")
-    else:
-        for prompt in list(_paper_prompt_order):
-            papers = segmenter.segment(img, jpeg, prompt)
-            if papers:
-                _paper_prompt_order.remove(prompt)
-                _paper_prompt_order.insert(0, prompt)
-                paper = max(papers, key=lambda i: i.mask.sum())
-                break
 
     # A margin around the card: people often lay it overlapping the strip.
     card_zone = ~_erode(~card.mask, 6) if card is not None else None
 
     def keep(f: Instance) -> bool:
-        if card is not None:
-            return (f.mask & card.mask).sum() < 0.5 * f.mask.sum()  # mostly card: it is the card
-        if paper is not None:  # the strip lies on the paper; drop only the paper itself
-            return f.mask.sum() < 0.6 * paper.mask.sum()
-        return True
+        if card is not None and (f.mask & card.mask).sum() >= 0.5 * f.mask.sum():
+            return False  # mostly card: it is the card
+        # The strip lies on the paper; drop only the paper itself.
+        return paper is None or f.mask.sum() < 0.6 * paper.mask.sum()
 
     def trim(f: Instance) -> Instance:
         if card_zone is None or not (f.mask & card_zone).any():
@@ -327,7 +380,7 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
 
     fabrics: list[Instance] = []
     for prompt in list(_strip_prompt_order):  # cloth words first; shape words when the scene is plain
-        fabrics = [trim(f) for f in segmenter.segment(img, jpeg, prompt) if keep(f)]
+        fabrics = [trim(f) for f in _cloth_in_view(segmenter.segment(img, jpeg, prompt), paper) if keep(f)]
         if fabrics:
             # The rig and lighting don't change between dips: try what worked first next time.
             _strip_prompt_order.remove(prompt)
@@ -335,9 +388,19 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
             break
     if not fabrics:
         raise RuntimeError("fabric strip not found in frame")
-    if card is None:
-        M, f0 = _white_balance(lin, paper, fabrics)
+    if paper is not None:
+        lin, f0 = _flat_field(lin, _bare_paper(paper, fabrics, card_zone))
         flags += f0
+    if card is not None:
+        M, residual, f1 = _card_correction(lin, card)
+        if f1 and f1[0].startswith("REJECT") and paper is not None:
+            M, f2 = _white_balance(lin, paper, fabrics)
+            flags += [f"WARN: colour card unreadable (fit residual {residual:.1f} dE00, uneven light or glare on it); used the white paper instead"] + f2
+        else:
+            flags += f1
+    else:
+        M, f1 = _white_balance(lin, paper, fabrics)
+        flags += f1
     # The test strip is the most elongated piece of cloth, lying either way.
     strip = max(fabrics, key=lambda i: i.elongation)
     lab, lab_sd, n, f2 = _lab_of_region(lin, strip.mask, M, rng)
@@ -348,7 +411,7 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
         others = [f for f in fabrics if f is not strip]
         if not others:
             targets = segmenter.segment(img, jpeg, TARGET_PROMPT)
-            others = [trim(t) for t in targets if not (t.mask & strip.mask).any() and keep(t)]
+            others = [trim(t) for t in _cloth_in_view(targets, paper) if not (t.mask & strip.mask).any() and keep(t)]
         if others:
             target = max(others, key=lambda i: i.mask.sum())
             target_lab, _, _, _ = _lab_of_region(lin, target.mask, M, rng)
@@ -375,21 +438,22 @@ def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[
             break
     if not objects:
         raise RuntimeError(f"could not find '{concept}' or any fabric in the photo")
-    obj = max(objects, key=lambda i: i.mask.sum())
+    paper = _find_paper(img, jpeg, segmenter)
+    if paper is not None and all((paper.mask & o.mask).sum() > 0.5 * paper.mask.sum() for o in objects):
+        paper = None  # that "paper" is the garment itself
+    # The garment on the paper, not the bedsheet under it.
+    obj = max(_cloth_in_view(objects, paper), key=lambda i: i.mask.sum())
     cards = segmenter.segment(img, jpeg, CARD_PROMPT)
-    if cards:
-        from .colour import fit_colour_correction
-
-        card = max(cards, key=lambda i: i.mask.sum())
-        M = fit_colour_correction(_patch_samples(lin, _card_inner_box(card)), reference_linear())
-        mode = "card"
+    card = max(cards, key=lambda i: i.mask.sum()) if cards else None
+    if paper is not None:
+        card_zone = ~_erode(~card.mask, 6) if card is not None else None
+        lin, _ = _flat_field(lin, _bare_paper(paper, objects, card_zone))
+    cc = _card_correction(lin, card) if card is not None else None
+    if cc is not None and not any(f.startswith("REJECT") for f in cc[2]):
+        M, mode = cc[0], "card"
+    elif cc is not None and paper is None:
+        raise RuntimeError("the colour card in this photo is unreadable (uneven light or glare); retake it in even light")
     else:
-        paper = None
-        for prompt in list(_paper_prompt_order):
-            papers = [p for p in segmenter.segment(img, jpeg, prompt) if p.mask.sum() > obj.mask.sum()]
-            if papers:
-                paper = max(papers, key=lambda i: i.mask.sum())
-                break
         M, _ = _white_balance(lin, paper, objects)
         mode = "paper" if paper is not None else "none"
     lab, _, _, _ = _lab_of_region(lin, obj.mask, M, rng)

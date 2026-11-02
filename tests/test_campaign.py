@@ -6,16 +6,17 @@ from rangrez.campaign import Campaign
 from rangrez.colour import delta_e_2000, hex_to_lab
 from rangrez.km import nominal_procion_cmy
 from rangrez.rig import Recipe
-from rangrez.sim import VirtualRig, ground_truth_masks
-from rangrez.vision import OfflineSegmenter
+from rangrez.sim import VirtualRig
 
 
-def make_campaign(target_lab, seed=11, **kw):
-    rig = VirtualRig(seed=seed)
-    return Campaign(np.asarray(target_lab, dtype=float), rig, OfflineSegmenter(ground_truth_masks()), **kw)
+def make_campaign(target_lab, seed=11, scene="tilted_phone", **kw):
+    """A campaign whose every dip comes back as a real-looking phone photo of that scene."""
+    rig = VirtualRig(seed=seed, scene=scene)
+    return Campaign(np.asarray(target_lab, dtype=float), rig, rig.segmenter(), **kw)
 
 
-# Shades reachable with turquoise / fuchsia / lemon yellow on cotton.
+# Shades reachable with turquoise / fuchsia / lemon yellow on cotton, each shot in a different room.
+SCENE = {"teal": "lamp_desk", "maroon": "daylight_window", "olive": "kitchen_tube", "navy": "evening_warm"}
 TARGETS = {
     "teal": lambda rig: rig.true_swatch_lab(Recipe((3.2, 0.6, 0.9))),
     "maroon": lambda rig: rig.true_swatch_lab(Recipe((0.6, 5.0, 2.0))),
@@ -27,7 +28,7 @@ TARGETS = {
 @pytest.mark.parametrize("name", list(TARGETS))
 def test_campaign_converges_on_reachable_shades(name):
     target = TARGETS[name](VirtualRig(seed=99))
-    c = make_campaign(target)
+    c = make_campaign(target, scene=SCENE[name])
     first_guess = nominal_procion_cmy().predict_lab  # the supplier model alone
     run_deterministic(c)
     assert c.status == "matched", c.state()

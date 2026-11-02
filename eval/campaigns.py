@@ -10,24 +10,36 @@ first. Reports the agent's measured dE00 and the TRUE dE00 of the best dip.
 from __future__ import annotations
 
 import os
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 os.environ.setdefault("RANGREZ_DYES", "home")
-sys.path.insert(0, os.path.dirname(__file__))
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-import numpy as np  # noqa: E402
-from realistic import PhotoRig, Scene, render  # noqa: E402
+import numpy as np
 
-from rangrez.agent import run_with_wonder  # noqa: E402
-from rangrez.campaign import Campaign  # noqa: E402
-from rangrez.colour import delta_e_2000, lab_to_hex  # noqa: E402
-from rangrez.rig import Recipe  # noqa: E402
-from rangrez.vision import CallLog, MuseSamSegmenter, target_from_photo  # noqa: E402
+from rangrez.agent import run_with_wonder
+from rangrez.assisted import AssistedRig
+from rangrez.campaign import Campaign
+from rangrez.colour import delta_e_2000, lab_to_hex
+from rangrez.photoreal import Scene, render
+from rangrez.rig import Recipe
+from rangrez.sim import VirtualRig
+from rangrez.vision import CallLog, MuseSamSegmenter, target_from_photo
+
+
+class PersonWithPhone(VirtualRig):
+    """Hidden chemistry; drops counted the way a person can; every dip a realistic phone photo."""
+
+    quantize = AssistedRig.quantize
+
+    def run_shot(self, recipe):
+        shot = super().run_shot(recipe)
+        self.truths = [*getattr(self, "truths", []), self.last_swatch_lab]
+        return shot
+
 
 # (scene, colour card in view, the drops that dyed the customer's target cloth)
 CASES = [
@@ -35,12 +47,16 @@ CASES = [
     ("daylight_window", True, (4, 8, 2)),
     ("shadowy", False, (2, 2, 12)),
     ("tilted_phone", True, (6, 6, 6)),
+    ("evening_warm", False, (3, 9, 6)),
+    ("kitchen_tube", True, (12, 2, 3)),
+    ("crumpled_strip", True, (2, 6, 9)),
+    ("vertical_strip", False, (7, 1, 10)),
 ]
 
 
 def one(case, seed):
     scene_name, card, drops = case
-    rig = PhotoRig(seed=seed, scene_name=scene_name, card=card)
+    rig = PersonWithPhone(seed=seed, scene=scene_name, card=card)
     true_target = rig.true_swatch_lab(Recipe(tuple(float(d) for d in drops)))
     # The person photographs the target cloth on the same paper, under the same light.
     photo, _ = render(Scene.load(scene_name), true_target, card=card, seed=seed * 7 + 1, paper_seed=seed)
@@ -50,8 +66,7 @@ def one(case, seed):
     c = Campaign(target, rig, seg, tolerance=2.0, max_shots=8)
     t0 = time.time()
     run_with_wonder(c, log)
-    truths = [np.array(m["true_lab"]) for m in rig.log]
-    true_de = [float(delta_e_2000(t, true_target)) for t in truths]
+    true_de = [float(delta_e_2000(t, true_target)) for t in getattr(rig, "truths", [])]
     best = int(np.argmin([s.delta_e for s in c.shots])) if c.shots else None
     return {
         "case": f"{scene_name} ({'card' if card else 'paper'})",
@@ -69,7 +84,7 @@ def one(case, seed):
 
 
 def main() -> None:
-    with ThreadPoolExecutor(len(CASES)) as pool:
+    with ThreadPoolExecutor(4) as pool:
         rows = list(pool.map(one, CASES, range(41, 41 + len(CASES))))
     for r in rows:
         print(f"{r['case']:26s} target {r['target']} read via {r['mode']} (err {r['target_read_err']:.2f})  -> {r['status']}")
