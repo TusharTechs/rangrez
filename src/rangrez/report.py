@@ -54,7 +54,8 @@ def _img(jpeg: bytes, width: int) -> str:
     return f'<img src="data:image/jpeg;base64,{base64.b64encode(jpeg).decode()}" width="{width}" alt="">'
 
 
-def render(campaign, target_photo: bytes | None = None, agent: str = "", api_calls: int | None = None) -> str:
+def render(campaign, target_photo: bytes | None = None, agent: str = "", api_calls: int | None = None,
+           preview: dict | None = None) -> str:
     c = campaign
     best = c.best
     tol = c.tolerance
@@ -111,6 +112,12 @@ img {{ border-radius: 6px; max-width: 100%; height: auto; }} .sign {{ display:fl
 {f'''<h2>Recipe</h2>
 <table><tr><th>Dye</th><th class="num">Bath concentration</th><th class="num">Stock for 1 kg cotton (1:{LIQUOR_RATIO})</th></tr>{prod}</table>
 <p class="meta">Dip {best.recipe.dip_seconds:.0f} s. Stock at {PROFILE.stock_per_l:g} {UNIT if UNIT != "drops" else "drops"} per litre. Scale-up assumes the same liquor ratio, temperature and fixation as the lab dip; confirm with a bulk trial.</p>''' if best else ""}
+
+{f"""<h2>Bulk preview</h2>
+<div class="grid"><div>{_img(preview["jpeg"], 420)}</div>
+<div class="meta">The customer's photo, recoloured by Muse Image to dip {preview["dip"]}'s shade. An image model is not a colour
+instrument: its first attempt measured ΔE00 {preview["raw_de00"]} from the dip, so Rangrez measured it with SAM 3.1 and corrected the
+garment's pixels; it now measures {preview["measured_hex"]}, ΔE00 {preview["de00"]} from the dip. For the eye only: the dip is the evidence.</div></div>""" if preview else ""}
 
 <h2>Dips</h2>
 <table><tr><th>#</th><th>Photo, SAM 3.1 masks</th><th>Measured</th><th>Recipe ({" · ".join(DYES)}, {UNIT})</th><th class="num">ΔE00</th><th>Against the target</th></tr>

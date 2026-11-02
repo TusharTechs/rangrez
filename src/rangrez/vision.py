@@ -451,7 +451,13 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
 
 
 def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, str]:
-    """Lab of the named object in a customer's photo (e.g. "teal kurta").
+    """Lab of the named object in a customer's photo (e.g. "teal kurta"), and how it was calibrated."""
+    lab, mode, _ = read_object(jpeg, concept, segmenter)
+    return lab, mode
+
+
+def read_object(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, str, np.ndarray]:
+    """Lab of the named object in a customer's photo (e.g. "teal kurta"), its calibration, and its mask.
 
     If the photo also shows the colour card, the result is calibrated;
     with white paper in view it is white-balanced the same way dips are; otherwise
@@ -488,7 +494,7 @@ def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[
         M, _ = _white_balance(lin, paper, objects)
         mode = "paper" if paper is not None else "none"
     lab, _, _, _ = _lab_of_region(lin, obj.mask, M, rng)
-    return lab, mode
+    return lab, mode, obj.mask
 
 
 def overlay(jpeg: bytes, m: Measurement) -> bytes:

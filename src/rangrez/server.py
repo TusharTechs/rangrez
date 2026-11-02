@@ -50,6 +50,8 @@ class Lab:
         self.thread: threading.Thread | None = None
         self.rec = Recorder()
         self.target_photo: bytes | None = None  # the customer's photo the current target came from
+        self.target_concept = "garment"
+        self.preview: dict | None = None  # Muse Image's bulk preview, measured and corrected
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -125,7 +127,7 @@ class Lab:
         c = self.campaign
         calls = sum(1 for e in self.history if e.get("kind") == "api")
         agent = next((e.get("agent") for e in self.history if e.get("kind") == "start"), "")
-        return render(c, target_photo=self.target_photo, agent=agent, api_calls=calls)
+        return render(c, target_photo=self.target_photo, agent=agent, api_calls=calls, preview=self.preview)
 
     def subscribe(self) -> queue.Queue:
         """A new page (a reload, the phone joining) first gets the campaign so far."""
@@ -145,6 +147,7 @@ class Lab:
         with self.lock:  # keep only the API calls made since the last start (e.g. reading the target photo)
             self.history = [e for e in self.history if e.get("kind") == "api" and e.get("at", 0) >= self.since]
             self.since = time.time()
+        self.preview = None  # a new campaign, a new best dip
         rig = self.make_rig(None, live)
         path = default_path()
         memory = LabMemory(path) if path is not None else None  # re-read: another process may have added dips
@@ -292,6 +295,8 @@ async def target_photo(request: Request, photo: UploadFile = File(...), concept:
     LAB.rec.pending = []  # only the latest target photo goes with the next campaign
     LAB.rec.stash("target.jpg", photo)
     LAB.target_photo = photo
+    LAB.target_concept = concept
+    LAB.preview = None
     LAB.rec.stash("target.json", result)
     return result
 
@@ -359,6 +364,33 @@ async def voice(audio: UploadFile = File(...), passcode: str = Form("")) -> dict
 def speakable(w: dict) -> str:
     amounts = ", ".join(f"{v} {w['unit']} of {d}" for d, v in w["amounts"].items() if float(v) > 0)
     return f"Dip {w['index']}. {amounts}. Dip for {w['dip_seconds']} seconds. Say done when the strip is dry and on the paper."
+
+
+@app.post("/api/preview")
+async def preview(passcode: str = Form("")) -> dict:
+    """The customer's garment in the best dip's shade: Muse Image recolours, SAM 3.1 checks and corrects."""
+    from .preview import bulk_preview
+
+    c = LAB.campaign
+    if c is None or c.best is None or LAB.target_photo is None:
+        raise HTTPException(409, "needs a campaign started from a customer's photo, with at least one dip")
+    if not LAB.live(passcode):
+        raise HTTPException(403, "the preview needs the Meta models: set MODEL_API_KEY, or enter the live passcode")
+    try:
+        p = await asyncio.to_thread(bulk_preview, LAB.target_photo, LAB.target_concept, c.best.measurement.lab, LAB.log)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    LAB.preview = {**p, "dip": c.best.index}
+    LAB.rec.save("preview.jpg", p["jpeg"])
+    LAB.rec.save("report.html", LAB.report())
+    return {"dip": c.best.index, "measured_hex": p["measured_hex"], "raw_de00": p["raw_de00"], "de00": p["de00"]}
+
+
+@app.get("/api/preview.jpg")
+def preview_image() -> Response:
+    if not LAB.preview:
+        raise HTTPException(404)
+    return Response(LAB.preview["jpeg"], media_type="image/jpeg")
 
 
 @app.post("/api/stop")

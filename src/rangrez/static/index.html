@@ -39,6 +39,7 @@
   .de b { font-size: 44px; font-variant-numeric: tabular-nums; line-height: 1; }
   .de small { color: var(--mute); margin-top: 6px; text-align: center; }
   .de.pass b { color: var(--ok); }
+  #previewImg { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin-top: 8px; }
   #frame { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #000; aspect-ratio: 16/9; object-fit: contain; }
   svg { width: 100%; height: 170px; display: block; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -133,6 +134,9 @@
         <div class="chip" id="dipChip"><span id="dipLabel">no dip yet</span></div>
       </div>
       <p class="hint"><a id="reportLink" href="/api/report.html" target="_blank" rel="noopener" hidden>Lab-dip report for the buyer ↗</a></p>
+      <button class="ghost" id="previewBtn" hidden>Preview the customer's garment in this shade (Muse Image)</button>
+      <p class="hint" id="previewNote"></p>
+      <img id="previewImg" hidden alt="The customer's garment recoloured to the dip's shade">
     </section>
     <section>
       <h2>Camera — SAM 3.1 masks: card (yellow), strip (cyan)</h2>
@@ -221,7 +225,7 @@ es.onmessage = (msg) => {
     replaying = true;
     shots = [];
     for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
-    $("reportLink").hidden = true;
+    $("reportLink").hidden = true; $("previewBtn").hidden = true; $("previewImg").hidden = true; $("previewNote").textContent = "";
     $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
   } else if (e.kind === "start") {
     $("agent").textContent = "agent: " + e.agent;
@@ -270,6 +274,7 @@ es.onmessage = (msg) => {
   } else if (e.kind === "status") {
     setStatus(e.status);
     $("reportLink").hidden = ["running", "waiting"].includes(e.status) || !shots.length;
+    $("previewBtn").hidden = $("reportLink").hidden || !targetFromPhoto;
     if (!["running", "waiting"].includes(e.status)) $("assist").hidden = true;
     if (e.reason) feed("notebook", `<span class="gate">${esc(e.status)}: ${esc(e.reason)}</span>`);
   } else if (e.kind === "api") {
@@ -289,7 +294,7 @@ $("usePhoto").onclick = async () => {
   const r = await fetch("/api/target-from-photo", { method: "POST", body: form });
   const j = await r.json();
   if (!r.ok) { $("photoNote").textContent = j.detail || "Could not read the photo."; return; }
-  $("picker").value = j.hex; $("targetChip").style.background = j.hex;
+  $("picker").value = j.hex; $("targetChip").style.background = j.hex; targetFromPhoto = true;
   const h = j.home_recipe;
   if (h) {
     const drops = Object.entries(h.drops).filter(([, n]) => n > 0).map(([d, n]) => `${n} drop${n === 1 ? "" : "s"} ${esc(d)}`).join(" · ");
@@ -327,7 +332,16 @@ $("useWebcam").onclick = () => sendAssist("/api/assist/webcam");
 $("stop").onclick = () => fetch("/api/stop", { method: "POST" });
 
 // -- hands-free: Muse Voice Transcribe hears the dyer; the browser reads instructions aloud ----------
-let handsFree = false, replaying = false, mic = null;
+let handsFree = false, replaying = false, mic = null, targetFromPhoto = false;
+$("previewBtn").onclick = async () => {
+  const form = new FormData(); form.append("passcode", $("passcode").value);
+  $("previewNote").textContent = "Muse Image is recolouring the garment; SAM 3.1 will check it…";
+  const r = await fetch("/api/preview", { method: "POST", body: form });
+  const j = await r.json();
+  if (!r.ok) { $("previewNote").textContent = j.detail || "Preview failed."; return; }
+  $("previewImg").src = `/api/preview.jpg?t=${Date.now()}`; $("previewImg").hidden = false;
+  $("previewNote").textContent = `Dip ${j.dip}'s shade on the customer's garment. Muse Image's first attempt was ΔE00 ${j.raw_de00} off; measured and corrected, it is now ${j.de00}. For the eye: the dip is the evidence.`;
+};
 function say(text) {
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
