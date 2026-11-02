@@ -50,12 +50,34 @@ def difference(target, sample) -> dict:
             "words": ", ".join(words) or "no visible difference"}
 
 
+def _order_block(order: dict, best) -> str:
+    from .order import production_plan
+
+    rows = "".join(f"<tr><td>{html.escape(k)}</td><td>{html.escape(str(v))}</td></tr>" for k, v in (
+        ("Garment", f"{order.get('quantity'):g} {order.get('quantity_unit')} of {order.get('garment')}"),
+        ("Fabric", order.get("fabric")), ("Lab dip due", order.get("lab_dip_due") or "not given"),
+        ("Delivery", order.get("deadline") or "not given"),
+        ("Shade", f"{order.get('shade_strictness')}: pass at ΔE00 ≤ {order.get('tolerance_de00')}"),
+        ("Notes", order.get("notes") or "")))
+    plan = production_plan(order, best.recipe.conc) if best else None
+    plan_html = ""
+    if plan:
+        dyes = "".join(f"<tr><td>{html.escape(d)}</td><td class='num'>{g:,} g</td></tr>" for d, g in plan["dye_g"].items())
+        plan_html = f"""<table><tr><th>For the order</th><th class="num"></th></tr>
+<tr><td>Cotton</td><td class="num">{plan["fabric_kg"]:,} kg</td></tr><tr><td>Dye bath</td><td class="num">{plan["bath_litres"]:,} L</td></tr>
+{dyes}<tr><td>Salt</td><td class="num">{plan["salt_kg"]:,} kg</td></tr><tr><td>Soda ash</td><td class="num">{plan["soda_ash_kg"]:,} kg</td></tr></table>
+<p class="meta">{html.escape(plan["assumptions"])}</p>"""
+    return f"""<h2>Order and production plan</h2>
+<p class="meta">Read from the buyer's message by Muse Spark; quantities are plain arithmetic on the approved dip's recipe.</p>
+<div class="grid"><div><table>{rows}</table></div><div>{plan_html}</div></div>"""
+
+
 def _img(jpeg: bytes, width: int) -> str:
     return f'<img src="data:image/jpeg;base64,{base64.b64encode(jpeg).decode()}" width="{width}" alt="">'
 
 
 def render(campaign, target_photo: bytes | None = None, agent: str = "", api_calls: int | None = None,
-           preview: dict | None = None) -> str:
+           preview: dict | None = None, order: dict | None = None) -> str:
     c = campaign
     best = c.best
     tol = c.tolerance
@@ -112,6 +134,8 @@ img {{ border-radius: 6px; max-width: 100%; height: auto; }} .sign {{ display:fl
 {f'''<h2>Recipe</h2>
 <table><tr><th>Dye</th><th class="num">Bath concentration</th><th class="num">Stock for 1 kg cotton (1:{LIQUOR_RATIO})</th></tr>{prod}</table>
 <p class="meta">Dip {best.recipe.dip_seconds:.0f} s. Stock at {PROFILE.stock_per_l:g} {UNIT if UNIT != "drops" else "drops"} per litre. Scale-up assumes the same liquor ratio, temperature and fixation as the lab dip; confirm with a bulk trial.</p>''' if best else ""}
+
+{_order_block(order, best) if order else ""}
 
 {f"""<h2>Bulk preview</h2>
 <div class="grid"><div>{_img(preview["jpeg"], 420)}</div>

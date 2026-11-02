@@ -88,3 +88,14 @@ def test_hindi_voice_commands():
     assert intent("कपड़ा ऊपर से थोड़ा धब्बेदार है।") == "note"
     w = {"index": 2, "amounts": {"blue": 12, "red": 0, "yellow": 4}, "unit": "drops", "dip_seconds": 90}
     assert instructions(w, "hi").startswith("डिप 2। नीला 12 बूँद, पीला 4 बूँद।")
+
+
+def test_production_plan_scales_the_approved_recipe():
+    from rangrez.order import fabric_kg, production_plan
+
+    order = {"garment": "kurtas", "quantity": 500, "quantity_unit": "pieces", "shade_strictness": "strict"}
+    assert fabric_kg(order) == 150.0  # 0.30 kg a kurta
+    plan = production_plan(order, (3.2, 0.6, 0.9))
+    assert plan["bath_litres"] == 1500 and plan["dye_g"]["turquoise"] == 4800
+    assert plan["salt_kg"] == 90.0 and plan["soda_ash_kg"] == 30.0
+    assert abs(fabric_kg({"quantity": 200, "quantity_unit": "metres"}) - 28.0) < 1e-9

@@ -52,6 +52,7 @@ class Lab:
         self.target_photo: bytes | None = None  # the customer's photo the current target came from
         self.target_concept = "garment"
         self.preview: dict | None = None  # Muse Image's bulk preview, measured and corrected
+        self.order: dict | None = None  # the buyer's order, read by Muse Spark
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -127,7 +128,8 @@ class Lab:
         c = self.campaign
         calls = sum(1 for e in self.history if e.get("kind") == "api")
         agent = next((e.get("agent") for e in self.history if e.get("kind") == "start"), "")
-        return render(c, target_photo=self.target_photo, agent=agent, api_calls=calls, preview=self.preview)
+        return render(c, target_photo=self.target_photo, agent=agent, api_calls=calls, preview=self.preview,
+                      order=self.order)
 
     def subscribe(self) -> queue.Queue:
         """A new page (a reload, the phone joining) first gets the campaign so far."""
@@ -360,6 +362,21 @@ async def voice(audio: UploadFile = File(...), passcode: str = Form(""), lang: s
         c.note(text, who="dyer")
         result = say["noted"]
     return {"transcript": text, "intent": act, "result": result}
+
+
+@app.post("/api/order")
+async def read_order(message: str = Form(...), passcode: str = Form("")) -> dict:
+    """The buyer's chat message, read by Muse Spark: what, how much, by when, how strict the shade."""
+    from .order import parse_order
+
+    if not LAB.live(passcode):
+        raise HTTPException(403, "reading an order needs the Meta models: set MODEL_API_KEY, or enter the live passcode")
+    try:
+        LAB.order = await asyncio.to_thread(parse_order, message[:2000], LAB.log)
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    LAB.rec.stash("order.json", {"message": message[:2000], "order": LAB.order})
+    return LAB.order
 
 
 @app.post("/api/preview")
