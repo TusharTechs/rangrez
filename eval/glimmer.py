@@ -228,7 +228,8 @@ def cmd_score() -> None:
     for name, r in out.items():
         print(f"{name:42s} first-dip dE00 median {r['median']:5.2f}  mean {r['mean']:5.2f}  p90 {r['p90']:5.2f}  "
               f"under 3: {r['under_3']:.0%}  answered {r['answered']}/{r['n']}")
-    (ROOT / "eval.json").write_text(json.dumps(out, indent=2))
+    (run / "eval.json").write_text(json.dumps(out, indent=2))
+    (ROOT / "eval.json").write_text(json.dumps(out, indent=2))  # the latest scored run, for the model card
 
 
 def cmd_publish() -> None:
@@ -241,6 +242,8 @@ def cmd_publish() -> None:
     if not any(adapter.glob("*")):
         sys.exit("no adapter yet: run `eval/glimmer.py download` first")
     results = json.loads((ROOT / "eval.json").read_text()) if (ROOT / "eval.json").exists() else {}
+    info = json.loads((adapter / "training.json").read_text()) if (adapter / "training.json").exists() else {}
+    train_info = f"trained on {info['trained_on']}, PEFT" if info else "Fireworks Serverless Training"
     table = "\n".join(f"| {k} | {v['median']} | {v['p90']} | {v['under_3']:.0%} |" for k, v in results.items())
     card = f"""---
 base_model: meta-models/Muse-Glimmer-30B
@@ -252,8 +255,8 @@ tags: [lora, colour, textile, dyeing, rangrez]
 # Glimmer for Rangrez: first-dip colourist (LoRA on Muse Glimmer 30B)
 
 Given a target colour in CIELAB, proposes the first dye recipe (turquoise, fuchsia and lemon yellow
-reactive dyes, g/L) for the Rangrez self-driving dye lab. Fine-tuned with LoRA (rank 8, 2 epochs,
-364 steps) on Fireworks Serverless Training, on 2,900 of the lab's recorded dips: each the recipe dipped and the
+reactive dyes, g/L) for the Rangrez self-driving dye lab. Fine-tuned with LoRA (rank 8, 2 epochs;
+{train_info}) on 2,900 of the lab's recorded dips: each the recipe dipped and the
 colour SAM 3.1 measured on the dried cloth in a real-looking phone photo. Dataset:
 [{user}/rangrez-lab-dips](https://huggingface.co/datasets/{user}/rangrez-lab-dips).
 
