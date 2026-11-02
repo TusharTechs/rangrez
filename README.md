@@ -149,7 +149,7 @@ Every campaign is recorded to `recordings/<time>_<rig>/`:
 - every dip photo, with and without SAM's masks;
 - every event: each Meta API call with its timing, Wonder's notes and tool calls, and each measurement.
 
-`uv run python eval/demo_reel.py recordings/<run>` turns a run into a 1080p clip.
+`uv run python eval/demo_reel.py recordings/<run>` turns a run into a 1080p clip. `eval/home_reel.py` cuts a recorded household run into a labelled simulation of a home dye run. The kitchen scenes are Muse Image pictures (`assets/sim/`). The customer's photo, each recipe Wonder chose and why, each dip photo with SAM's masks, and the errors all come from the recording. Every frame says it is a simulation.
 
 Tests:
 

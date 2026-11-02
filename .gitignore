@@ -20,3 +20,4 @@ captures/
 *.log
 eval/glimmer/adapter/
 lab/
+demo/
