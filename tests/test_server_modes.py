@@ -24,3 +24,27 @@ def test_no_key_is_never_live(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     monkeypatch.setenv("RANGREZ_LIVE_PASSCODE", "indigo-42")
     assert not Lab().live("indigo-42")
+
+
+def test_report_describes_the_difference_like_a_colourist():
+    from rangrez.report import difference
+
+    d = difference([50, 0, 30], [48, 2, 33])  # a yellow that came out darker, more saturated and redder
+    assert d["dL"] < 0 and d["dC"] > 0
+    assert "darker" in d["words"] and "redder" in d["words"]
+    assert difference([50, 0, 30], [50.1, 0, 30.1])["words"] == "no visible difference"
+
+
+def test_report_renders_a_campaign(monkeypatch):
+    monkeypatch.setenv("RANGREZ_MEMORY", "off")
+    from rangrez.agent import run_deterministic
+    from rangrez.campaign import Campaign
+    from rangrez.report import render
+    from rangrez.rig import Recipe
+    from rangrez.sim import VirtualRig
+
+    rig = VirtualRig(seed=4, scene="kitchen_tube")
+    c = Campaign(rig.true_swatch_lab(Recipe((3.2, 0.6, 0.9))), rig, rig.segmenter())
+    run_deterministic(c)
+    page = render(c, agent="offline policy", api_calls=0)
+    assert "PASS" in page and "Buyer approval" in page and page.count("<tr>") >= len(c.shots) + 4

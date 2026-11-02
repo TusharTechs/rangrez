@@ -33,6 +33,8 @@ You control the lab only through tools. Rules:
 - Before every run_shot, call suggest_recipes. You may pick a candidate or blend candidates, but explain why.
 - After each shot with a usable measurement, call fit_model so the dye model learns this dye lot.
 - For the first dip, if a glimmer candidate is offered, use it: Glimmer learned this dye lot from the lab's own dips.
+  Otherwise, if lab_memory is offered and its remembered dip was within about dE00 6 of the target, use it:
+  it corrects a real dip of this very dye lot.
 - Far from the target, trust model_inverse. Once the best dip is within about dE00 6, prefer colourist_correction:
   the model always predicts a perfect match but cannot capture everything about this dye lot (saturation, lot strength),
   while the correction is learned from real dips.
@@ -108,6 +110,13 @@ def dispatch(c: Campaign, name: str, args: dict) -> dict:
 
 def run_with_wonder(c: Campaign, log: CallLog | None = None, max_turns: int = 60) -> None:
     """Drive the campaign with Muse Wonder over the Meta Model API."""
+    try:
+        _wonder_loop(c, log, max_turns)
+    finally:
+        c.close()
+
+
+def _wonder_loop(c: Campaign, log: CallLog | None, max_turns: int) -> None:
     from openai import OpenAI
 
     log = log or CallLog()
@@ -149,6 +158,13 @@ def run_with_wonder(c: Campaign, log: CallLog | None = None, max_turns: int = 60
 
 def run_deterministic(c: Campaign, on_step: Callable[[], None] | None = None) -> None:
     """Offline policy with the same tools and rules: used in tests and replay mode."""
+    try:
+        _deterministic_loop(c, on_step)
+    finally:
+        c.close()
+
+
+def _deterministic_loop(c: Campaign, on_step: Callable[[], None] | None) -> None:
     while c.status == "running" and len(c.shots) < c.max_shots:
         if c.shots:
             dispatch(c, "fit_model", {})
@@ -160,8 +176,12 @@ def run_deterministic(c: Campaign, on_step: Callable[[], None] | None = None) ->
         near = c.best is not None and c.best.delta_e < CORRECTION_ZONE_DE00
         correction = [x for x in cands if x["method"] == "colourist_correction"]
         first = [x for x in cands if x["method"] == "glimmer"]
+        remembered = [x for x in cands if x["method"] == "lab_memory"
+                      and c.memory_source_de is not None and c.memory_source_de < CORRECTION_ZONE_DE00]
         if first:
             pick = first[0]
+        elif remembered:
+            pick = remembered[0]
         else:
             pick = correction[0] if near and correction else min(cands, key=lambda x: x["predicted_delta_e00"])
         dispatch(c, "write_note", {"text": f"Shot {len(c.shots) + 1}: {pick['method']} predicts dE00 {pick['predicted_delta_e00']}."})

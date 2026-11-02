@@ -1,0 +1,500 @@
+{
+  "summary": {
+    "fresh": {
+      "matched": 40,
+      "mean_dips": 2.27,
+      "mean_dips_second_half": 2.35,
+      "median_first_de00_second_half": 3.81
+    },
+    "memory": {
+      "matched": 40,
+      "mean_dips": 1.75,
+      "mean_dips_second_half": 1.65,
+      "median_first_de00_second_half": 1.4
+    }
+  },
+  "fresh": [
+    {
+      "campaign": 1,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.7387883891294527
+    },
+    {
+      "campaign": 2,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.9992635778324996
+    },
+    {
+      "campaign": 3,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 5.155665667361626
+    },
+    {
+      "campaign": 4,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 3.313104309525307
+    },
+    {
+      "campaign": 5,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 9.606164537016527
+    },
+    {
+      "campaign": 6,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 5.886588471495599
+    },
+    {
+      "campaign": 7,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 4.234844766510381
+    },
+    {
+      "campaign": 8,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 12.895300113542842
+    },
+    {
+      "campaign": 9,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 0.7002742993737202
+    },
+    {
+      "campaign": 10,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 0.7799501484957275
+    },
+    {
+      "campaign": 11,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 6.868284197679933
+    },
+    {
+      "campaign": 12,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 6.78975646928377
+    },
+    {
+      "campaign": 13,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 7.176042304604926
+    },
+    {
+      "campaign": 14,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.04419037768812
+    },
+    {
+      "campaign": 15,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.0740494703743695
+    },
+    {
+      "campaign": 16,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.9516518402164356
+    },
+    {
+      "campaign": 17,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 0.7724652683556764
+    },
+    {
+      "campaign": 18,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 9.292186719438545
+    },
+    {
+      "campaign": 19,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 8.39299363985084
+    },
+    {
+      "campaign": 20,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 0.8377628204362679
+    },
+    {
+      "campaign": 21,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 3.6259002026687477
+    },
+    {
+      "campaign": 22,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 5.531577324783114
+    },
+    {
+      "campaign": 23,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.15904946153359
+    },
+    {
+      "campaign": 24,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.666691973129889
+    },
+    {
+      "campaign": 25,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 0.5305832303826947
+    },
+    {
+      "campaign": 26,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.9391667506156587
+    },
+    {
+      "campaign": 27,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 10.193406424447735
+    },
+    {
+      "campaign": 28,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 6.716315777110297
+    },
+    {
+      "campaign": 29,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 0.6606519998635814
+    },
+    {
+      "campaign": 30,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.7559086883007349
+    },
+    {
+      "campaign": 31,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 8.880193162432663
+    },
+    {
+      "campaign": 32,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.2800736950037073
+    },
+    {
+      "campaign": 33,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.3127434684828472
+    },
+    {
+      "campaign": 34,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 7.808835896255844
+    },
+    {
+      "campaign": 35,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 12.488955824855697
+    },
+    {
+      "campaign": 36,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 3.9917985627267836
+    },
+    {
+      "campaign": 37,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 8.729121232101543
+    },
+    {
+      "campaign": 38,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 4.5975623669386145
+    },
+    {
+      "campaign": 39,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 9.92907395898802
+    },
+    {
+      "campaign": 40,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.231512882180083
+    }
+  ],
+  "memory": [
+    {
+      "campaign": 1,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.7387883891294527
+    },
+    {
+      "campaign": 2,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.9992635778324996
+    },
+    {
+      "campaign": 3,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.18769793653743
+    },
+    {
+      "campaign": 4,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.8960537286925694
+    },
+    {
+      "campaign": 5,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 5.274086588842268
+    },
+    {
+      "campaign": 6,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.758738315790452
+    },
+    {
+      "campaign": 7,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.7011444626896421
+    },
+    {
+      "campaign": 8,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 4.102059334588484
+    },
+    {
+      "campaign": 9,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.4105282265630557
+    },
+    {
+      "campaign": 10,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.9678189884442503
+    },
+    {
+      "campaign": 11,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.911523856717703
+    },
+    {
+      "campaign": 12,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.5998053306978297
+    },
+    {
+      "campaign": 13,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 3.0162152873335213
+    },
+    {
+      "campaign": 14,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.6048857311755078
+    },
+    {
+      "campaign": 15,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.2614016472536267
+    },
+    {
+      "campaign": 16,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.5118279523833347
+    },
+    {
+      "campaign": 17,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.2540860387824009
+    },
+    {
+      "campaign": 18,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 4.162421610402193
+    },
+    {
+      "campaign": 19,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.185055926864892
+    },
+    {
+      "campaign": 20,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.2236338299624467
+    },
+    {
+      "campaign": 21,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.6474298346895522
+    },
+    {
+      "campaign": 22,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.0336954857641394
+    },
+    {
+      "campaign": 23,
+      "status": "matched",
+      "dips": 3,
+      "first_true_de00": 1.3500219344600948
+    },
+    {
+      "campaign": 24,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.3567787909724771
+    },
+    {
+      "campaign": 25,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 0.46358741060204967
+    },
+    {
+      "campaign": 26,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 2.0176005176892486
+    },
+    {
+      "campaign": 27,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.9828388120872193
+    },
+    {
+      "campaign": 28,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 2.1904634154617115
+    },
+    {
+      "campaign": 29,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.047517605164709
+    },
+    {
+      "campaign": 30,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.5686020657631536
+    },
+    {
+      "campaign": 31,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 3.6707448993590326
+    },
+    {
+      "campaign": 32,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.172890137438822
+    },
+    {
+      "campaign": 33,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 0.7874447984634224
+    },
+    {
+      "campaign": 34,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.8207540339801367
+    },
+    {
+      "campaign": 35,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.4562562305677342
+    },
+    {
+      "campaign": 36,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.0341905236554148
+    },
+    {
+      "campaign": 37,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.8585645402387194
+    },
+    {
+      "campaign": 38,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.4396190533504676
+    },
+    {
+      "campaign": 39,
+      "status": "matched",
+      "dips": 2,
+      "first_true_de00": 1.3113014800547622
+    },
+    {
+      "campaign": 40,
+      "status": "matched",
+      "dips": 1,
+      "first_true_de00": 1.3362367787881924
+    }
+  ]
+}

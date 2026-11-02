@@ -18,12 +18,13 @@ from pathlib import Path
 import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from .agent import WONDER_MODEL, run_deterministic, run_with_wonder
 from .campaign import Campaign
 from .colour import hex_to_lab, lab_to_hex
+from .memory import LabMemory, default_path
 from .photoreal import scene_names
 from .recorder import Recorder
 from .rig import DYES, UNIT
@@ -48,6 +49,7 @@ class Lab:
         self.campaign: Campaign | None = None
         self.thread: threading.Thread | None = None
         self.rec = Recorder()
+        self.target_photo: bytes | None = None  # the customer's photo the current target came from
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -115,6 +117,15 @@ class Lab:
             self.rec.save(f"dip{s.index:02d}_sam.jpg", s.overlay_jpeg)
         if event.get("kind") == "status" and event.get("status") not in ("running", "waiting"):
             self.rec.save("state.json", self.campaign.state())
+            self.rec.save("report.html", self.report())
+
+    def report(self) -> str:
+        from .report import render
+
+        c = self.campaign
+        calls = sum(1 for e in self.history if e.get("kind") == "api")
+        agent = next((e.get("agent") for e in self.history if e.get("kind") == "start"), "")
+        return render(c, target_photo=self.target_photo, agent=agent, api_calls=calls)
 
     def subscribe(self) -> queue.Queue:
         """A new page (a reload, the phone joining) first gets the campaign so far."""
@@ -134,7 +145,9 @@ class Lab:
             self.history = [e for e in self.history if e.get("kind") == "api" and e.get("at", 0) >= self.since]
             self.since = time.time()
         rig = self.make_rig(None, live)
-        c = Campaign(target_lab, rig, self.make_segmenter(rig, live), tolerance=tolerance)
+        path = default_path()
+        memory = LabMemory(path) if path is not None else None  # re-read: another process may have added dips
+        c = Campaign(target_lab, rig, self.make_segmenter(rig, live), tolerance=tolerance, memory=memory)
         self.rec.begin(type(rig).__name__, {
             "rig": type(rig).__name__, "scene": getattr(rig, "scene", None), "dyes": DYES, "unit": UNIT,
             "agent": WONDER_MODEL if live else "offline policy", "tolerance": tolerance,
@@ -148,7 +161,8 @@ class Lab:
         self.campaign = c
         self.publish({"kind": "start", "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),
                       "tolerance": tolerance, "agent": WONDER_MODEL if live else "offline policy",
-                      "rig": type(rig).__name__, "at": time.time()})
+                      "rig": type(rig).__name__, "memory_dips": len(memory.dips) if memory else 0,
+                      "memory_campaigns": len(memory.campaigns) if memory else 0, "at": time.time()})
         delay = float(os.environ.get("RANGREZ_STEP_DELAY", "1.5"))
 
         def work() -> None:
@@ -235,6 +249,7 @@ async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabri
     result = {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration, "concept": concept}
     LAB.rec.pending = []  # only the latest target photo goes with the next campaign
     LAB.rec.stash("target.jpg", photo)
+    LAB.target_photo = photo
     LAB.rec.stash("target.json", result)
     return result
 
@@ -279,6 +294,13 @@ def stop() -> dict:
 @app.get("/api/state")
 def state() -> dict:
     return LAB.campaign.state() if LAB.campaign else {"status": "idle"}
+
+
+@app.get("/api/report.html")
+def report() -> HTMLResponse:
+    if LAB.campaign is None or not LAB.campaign.shots:
+        raise HTTPException(404, "no dips yet")
+    return HTMLResponse(LAB.report())
 
 
 @app.get("/api/shot/{index}.jpg")

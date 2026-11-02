@@ -16,6 +16,7 @@ import numpy as np
 from . import glimmer
 from .colour import delta_e_2000, lab_to_hex
 from .km import DyeModel, fit_gains, solve_recipe
+from .memory import LabMemory
 from .profiles import PROFILE
 from .rig import DYES, UNIT, GateError, Recipe, Rig, check_recipe, execute
 from .vision import Measurement, Segmenter, measure, overlay
@@ -48,6 +49,16 @@ class Campaign:
     listeners: list = field(default_factory=list)
     status: str = "running"
     side_readings: list = field(default_factory=list)  # the customer's cloth, read beside each strip
+    memory: LabMemory | None = None  # every dip this lab has made with this dye lot
+    campaign_id: str = field(default_factory=lambda: f"c{int(time.time() * 1000)}")
+    memory_source_de: float | None = None  # how far the remembered dip offered first was from the target
+
+    def __post_init__(self) -> None:
+        if self.memory is not None and self.memory.dips:
+            self.model = self.memory.warm_model(self.model)
+            self.note(f"Lab memory: {len(self.memory.dips)} dips from {len(self.memory.campaigns)} earlier campaigns "
+                      f"with this dye lot. Starting from the uptake they showed: "
+                      f"{dict(zip(DYES, np.round(self.model.gains, 2).tolist()))}.", who="lab")
 
     # -- events ------------------------------------------------------------
     def emit(self, kind: str, **data) -> None:
@@ -95,8 +106,10 @@ class Campaign:
 
     # -- tools -----------------------------------------------------------------
     def fit_model(self) -> dict:
-        """Refit per-dye uptake to every valid shot so far."""
+        """Refit per-dye uptake to every valid shot so far (and every remembered dip of this lot)."""
         data = [(s.recipe.as_array(), s.measurement.lab) for s in self.shots if s.measurement.ok]
+        if self.memory is not None:  # it already holds this campaign's dips
+            data = self.memory.recent()
         before = self.model.gains.copy()
         self.model = fit_gains(self.model, data)
         errs = [float(delta_e_2000(self.model.predict_lab(c), lab)) for c, lab in data]
@@ -120,6 +133,13 @@ class Campaign:
                 d = float(delta_e_2000(self.model.predict_lab(g), self.target_lab))
                 cands.append(("glimmer", g, d, "Muse Glimmer fine-tuned on this lab's own dips: its first recipes "
                               "land closer than the supplier model's (the predicted dE00 shown is the supplier model's opinion)."))
+        if not self.shots and self.memory is not None and (near := self.memory.nearest(self.target_lab)):
+            c0, lab0, d0 = near
+            step = self._correct(c0, lab0)
+            pred = float(delta_e_2000(lab0 + self._jac(c0) @ (step - c0), self.target_lab))
+            self.memory_source_de = d0
+            cands.append(("lab_memory", step, pred, f"The most similar dip this lab has made (dE00 {d0:.1f} from the target), "
+                          "corrected towards it with the refitted model's sensitivity."))
         best = self.best
         if best is not None:
             step = self._correction_step(best)
@@ -165,6 +185,8 @@ class Campaign:
         if m.ok and m.target_lab is not None:
             self._side_by_side(m)
         de = float(delta_e_2000(m.lab, self.target_lab)) if m.ok else float("nan")
+        if m.ok and self.memory is not None:
+            self.memory.record_dip(recipe.as_array(), m.lab, self.campaign_id)
         shot = Shot(len(self.shots) + 1, recipe, m, de, rationale, result.image_jpeg, overlay(result.image_jpeg, m))
         self.shots.append(shot)
         self.emit("shot", index=shot.index, recipe=recipe.describe(), lab=m.lab.tolist(),
@@ -196,6 +218,18 @@ class Campaign:
                       f"dE00 {float(delta_e_2000(before, self.target_lab)):.1f} apart).", who="agent")
             for s in self.shots:  # earlier dips are judged against the better target too
                 s.delta_e = float(delta_e_2000(s.measurement.lab, self.target_lab)) if s.measurement.ok else float("nan")
+
+    def close(self) -> None:
+        """Remember how this campaign went (the night shift's chart reads these)."""
+        if self.memory is None:
+            return
+        ok = [s for s in self.shots if s.measurement.ok]
+        self.memory.record_campaign({
+            "campaign": self.campaign_id, "target_lab": [round(float(v), 2) for v in self.target_lab],
+            "status": self.status, "dips": len(self.shots),
+            "first_de00": round(ok[0].delta_e, 2) if ok else None,
+            "best_de00": round(self.best.delta_e, 2) if self.best else None,
+        })
 
     def declare_out_of_gamut(self) -> dict:
         best = self.best
@@ -233,9 +267,12 @@ class Campaign:
         return np.stack(cols, axis=1)
 
     def _correction_step(self, best: Shot) -> np.ndarray | None:
-        c0 = best.recipe.as_array()
+        return self._correct(best.recipe.as_array(), best.measurement.lab)
+
+    def _correct(self, c0: np.ndarray, lab: np.ndarray) -> np.ndarray:
+        """Move recipe c0, which dyed `lab`, towards the target."""
         J = self._jac(c0)
-        err = self.target_lab - best.measurement.lab
+        err = self.target_lab - lab
         # Damped least squares; weight lightness less, as CIEDE2000 does.
         Wt = np.diag([0.6, 1.0, 1.0])
         A = Wt @ J

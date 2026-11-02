@@ -73,6 +73,7 @@
   <span class="spacer"></span>
   <span class="pill" id="agent">agent: …</span>
   <span class="pill" id="rig">rig: …</span>
+  <span class="pill" id="memory">lab memory</span>
   <span class="pill" id="status">idle</span>
 </header>
 
@@ -126,6 +127,7 @@
         <div class="de" id="deBox"><b id="de">—</b><small id="deNote">CIEDE2000</small></div>
         <div class="chip" id="dipChip"><span id="dipLabel">no dip yet</span></div>
       </div>
+      <p class="hint"><a id="reportLink" href="/api/report.html" target="_blank" rel="noopener" hidden>Lab-dip report for the buyer ↗</a></p>
     </section>
     <section>
       <h2>Camera — SAM 3.1 masks: card (yellow), strip (cyan)</h2>
@@ -211,9 +213,11 @@ es.onmessage = (msg) => {
   if (e.kind === "reset") {  // the server replays this campaign from the start
     shots = [];
     for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
+    $("reportLink").hidden = true;
     $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
   } else if (e.kind === "start") {
     $("agent").textContent = "agent: " + e.agent;
+    $("memory").textContent = `lab memory: ${e.memory_dips || 0} dips · ${e.memory_campaigns || 0} campaigns`;
     shots = []; tolerance = e.tolerance;
     $("shots").innerHTML = ""; $("notebook").innerHTML = ""; drawChart();
     $("targetChip").style.background = e.target_hex;
@@ -256,6 +260,7 @@ es.onmessage = (msg) => {
     feed("notebook", `<span class="tool">model refit</span> <span class="muted">uptake ${esc(JSON.stringify(e.gains_after))}, fit error ${e.model_fit_error_de00}</span>`);
   } else if (e.kind === "status") {
     setStatus(e.status);
+    $("reportLink").hidden = ["running", "waiting"].includes(e.status) || !shots.length;
     if (!["running", "waiting"].includes(e.status)) $("assist").hidden = true;
     if (e.reason) feed("notebook", `<span class="gate">${esc(e.status)}: ${esc(e.reason)}</span>`);
   } else if (e.kind === "api") {

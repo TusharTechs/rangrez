@@ -19,3 +19,4 @@ recordings/
 captures/
 *.log
 eval/glimmer/adapter/
+lab/
