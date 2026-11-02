@@ -4,13 +4,23 @@
 
 <p align="center"><b>A self-driving dye lab on Meta models.</b><br>Show it a colour. It picks a recipe, a cotton strip is dyed, a phone photographs it, and it corrects the recipe until the cloth matches.</p>
 
-<p align="center">
-<a href="https://huggingface.co/spaces/TechTush/rangrez">▶ Try it</a> ·
-<a href="https://huggingface.co/spaces/TechTush/rangrez?replay=1">Watch a recorded live run</a> ·
-<a href="https://huggingface.co/spaces/TechTush/rangrez?tour=1">Take the 2-minute tour</a> ·
-<a href="https://huggingface.co/TechTush/rangrez-glimmer-lora">Glimmer weights</a> ·
-<a href="https://huggingface.co/datasets/TechTush/rangrez-lab-dips">Dataset</a>
-</p>
+<p align="center"><a href="https://youtu.be/g4Z30UhPtjA"><img src="assets/video_thumbnail.jpg" width="640" alt="Watch the 3-minute demo video on YouTube"></a><br><sub>▶ <a href="https://youtu.be/g4Z30UhPtjA">Watch the 3-minute demo</a></sub></p>
+
+## Quick links
+
+| | |
+| --- | --- |
+| ▶ **3-minute demo video** | [youtu.be/g4Z30UhPtjA](https://youtu.be/g4Z30UhPtjA) |
+| **Live app** (Hugging Face Space) | [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez) |
+| A recorded live run, replayed in the app | […/rangrez?replay=1](https://huggingface.co/spaces/TechTush/rangrez?replay=1) |
+| The 2-minute guided tour | […/rangrez?tour=1](https://huggingface.co/spaces/TechTush/rangrez?tour=1) |
+| **Open weights:** Muse Glimmer 30B LoRA | [TechTush/rangrez-glimmer-lora](https://huggingface.co/TechTush/rangrez-glimmer-lora) |
+| **Dataset:** 2,900 lab dips | [TechTush/rangrez-lab-dips](https://huggingface.co/datasets/TechTush/rangrez-lab-dips) |
+| Source code | [github.com/TusharTechs/rangrez](https://github.com/TusharTechs/rangrez) |
+| Architecture diagram | [Architecture](#architecture) |
+| Run it on Windows, macOS or Linux | [Run it locally](#run-it-locally) |
+| Results and benchmarks | [Does it work?](#does-it-work-on-real-looking-photos) · [Glimmer](#glimmer-the-labs-first-dip) |
+| Robot rig: parts, wiring, firmware | [hardware/BUILD.md](hardware/BUILD.md) · [firmware](firmware/rangrez_rig/rangrez_rig.ino) |
 
 ![The Rangrez dashboard: the tape of dips converging on the target, SAM 3.1's masks on the dip photo, the colour difference gauge, and the Meta models lighting up as they are called](assets/dashboard.jpg)
 
@@ -32,29 +42,56 @@
 
 *Rangrez* (रंगरेज़) means *dyer*.
 
+## For judges: where to look
+
+| Criterion | Where to see it |
+| --- | --- |
+| **Impact** | [Why](#why): lab dips take 2–4 rounds of several days; small dye houses match by eye. The app's *The case* tab covers adoption, cost and honest limits. |
+| **Meta tooling** | Six models with six jobs, [listed below](#architecture). Every call is shown live on the dashboard's model chips and recorded with its timing. Muse Glimmer was fine-tuned and its weights published. |
+| **Technical depth** | Colour measurement from a phone (flat-field from the paper, 24-patch card correction, CIEDE2000 checked against colour-science), Kubelka-Munk dye model, a safety gate repeated in [firmware](firmware/rangrez_rig/rangrez_rig.ino), [124 tests](#run-it-locally), and honest baselines that beat our own fine-tune. |
+| **Demo** | The [video](https://youtu.be/g4Z30UhPtjA), the [live app](https://huggingface.co/spaces/TechTush/rangrez), or a [recorded live run](https://huggingface.co/spaces/TechTush/rangrez?replay=1) with every real Meta API call. |
+| **Agentic** | Muse Wonder matched 8/8 live campaigns; a fixed policy with the same tools matched 5/8 ([table](#does-it-work-on-real-looking-photos)). |
+| **Open weights** | [Glimmer LoRA](https://huggingface.co/TechTush/rangrez-glimmer-lora) and [dataset](https://huggingface.co/datasets/TechTush/rangrez-lab-dips), trained on Modal, with the training and evaluation code in `eval/`. |
+
 ## Why
 
 A textile buyer approves a shade by "lab dip": the dye house mixes a recipe, dyes a swatch, and sends it for approval. If the buyer rejects it, the house corrects and dyes again. Each round costs days. Large mills use spectrophotometers and colour-matching software; the thousands of small dye houses in Tiruppur, Surat, Erode and Bhiwandi mostly use experience and repeated trials.
 
 Rangrez automates the colourist's loop on a phone camera and an old-fashioned set of pumps: recipe, dip, measure, correct.
 
-## How it works
+## Architecture
 
+**The lab loop.** One campaign, from a target colour to a matched dip.
+
+```mermaid
+flowchart LR
+    T["Target colour<br/>read from the customer's photo<br/>by SAM 3.1 + the colour card"] --> W
+    G["Muse Glimmer 30B<br/>LoRA, open weights"] -- "first recipe" --> W
+    V["Muse Voice Transcribe<br/>done · repeat · stop · हो गया"] --> W
+    W["Muse Wonder<br/>the colourist agent"] -- "next recipe" --> GATE["Safety gate<br/>caps · volume · stock · time"]
+    W <-- "tool calls: refit, suggest" --> KM["Kubelka-Munk model<br/>+ lab memory"]
+    GATE --> RIG["Rig: ESP32 robot · a person<br/>with a dropper · or the simulator"]
+    RIG -- "dip photo" --> S["SAM 3.1<br/>card · paper · dyed strip"]
+    S --> C["Colour engine<br/>flat field · card correction<br/>CIELAB · CIEDE2000"]
+    C -- "ΔE00 to target" --> W
+    W -- "matched, out of gamut,<br/>or escalate to a human" --> END(["Done"])
 ```
-target colour ──► Muse Wonder (lead colourist)
-                    │ picks the next recipe from deterministic tools:
-                    │   Kubelka-Munk dye model · correction learned from real dips
-                    ▼
-               safety gate ──► pumps · stir · dip cotton tape · dry
-                                            │
-                     phone camera ◄─────────┘
-                          │
-                     SAM 3.1 finds the colour card and the dyed segment
-                          │
-             card-corrected CIELAB ± uncertainty ──► CIEDE2000 to target
-                          │
-                matched? stop.  closer? refit and correct.  out of gamut? say so.
+
+**Around the loop.** From the buyer's message to the documents they get back.
+
+```mermaid
+flowchart LR
+    MSG["Buyer's WhatsApp message<br/>English · Hindi · Hinglish"] --> SP1["Muse Spark<br/>reads the order"]
+    SP1 -- "tolerance: strict 1.0 · normal 1.5 · relaxed 2.0" --> LOOP["The lab loop"]
+    PH["Customer's garment photo"] --> SAM["SAM 3.1<br/>target colour"] --> LOOP
+    LOOP -- "approved dip" --> REP["Lab-dip report<br/>ΔE00 · CMC 2:1 · options A/B/C<br/>% owf recipe · production plan"]
+    LOOP -- "approved dip" --> IMG["Muse Image preview<br/>measured and corrected by SAM 3.1"]
+    REP --> SP2["Muse Spark<br/>reply in the buyer's language"]
 ```
+
+The loop: **recipe → gate → dye a strip → photograph → SAM 3.1 masks → calibrated colour → ΔE00 → refit and correct**, until the measured difference is inside the buyer's tolerance, the shade is out of the dyes' gamut, or three dips fail to improve and a human takes over. The model reasons; the numbers come from tested code; the hardware obeys only the gate and the firmware.
+
+### The six Meta models
 
 | Meta model | Job |
 | --- | --- |
@@ -90,21 +127,50 @@ target colour ──► Muse Wonder (lead colourist)
 - **No single photo decides a pass.** On an automated rig, a dip that passes is photographed again, and both readings must agree.
 - **It measures cloth, not liquid.** A cup of dye does not predict the shade on fabric, so every reading is taken on a dried, dyed cotton segment.
 
-## Run it
+## Run it locally
+
+Rangrez runs on **Windows, macOS and Linux** with Python 3.12+. [uv](https://docs.astral.sh/uv/) installs the right Python and every dependency from the lock file. No API key and no hardware are needed: without a key, the full loop runs in the built-in simulator with an offline policy and SAM masks cached for each scene.
+
+**macOS and Linux**
 
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh        # once
+git clone https://github.com/TusharTechs/rangrez.git
+cd rangrez
 uv sync
-uv run rangrez-lab            # http://127.0.0.1:8000
-```
-
-Or try it without installing anything: [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez). Photograph your outfit: SAM 3.1 reads its colour and Rangrez gives a recipe to dye a matching cloth at home, in drops of blue, red and yellow household colour.
-
-Without an API key it runs the full loop in the built-in simulator with an offline policy and SAM masks cached for each scene. The simulator has a hidden "real" dye lot and pump noise, and every dip comes back as a real-looking phone photo (see below). Add a key to use hosted SAM 3.1 and Muse Wonder:
-
-```bash
-cp .env.example .env          # set MODEL_API_KEY
 uv run rangrez-lab
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # once, then open a new terminal
+git clone https://github.com/TusharTechs/rangrez.git
+cd rangrez
+uv sync
+uv run rangrez-lab
+```
+
+Open **http://127.0.0.1:8000** and press *Match this kurta*, *Watch a recorded live run*, or *Take the 2-minute tour*.
+
+**Docker (any OS)**
+
+```bash
+docker build -f space/Dockerfile -t rangrez .
+docker run -p 7860:7860 rangrez                         # http://127.0.0.1:7860
+```
+
+**With the Meta models.** Copy the example settings and add your Meta Model API key. `.env` is read on every OS, so it is also the easiest place for the other settings below.
+
+```bash
+cp .env.example .env            # Windows: copy .env.example .env
+# set MODEL_API_KEY=... in .env, then
+uv run rangrez-lab
+```
+
+With a key, SAM 3.1 measures every photo and Muse Wonder runs the campaign; Muse Spark, Muse Image and Muse Voice Transcribe light up when you use the order box, the preview and hands-free mode. Glimmer's first dip needs `GLIMMER_BASE_URL` and `GLIMMER_API_KEY` (serve the published weights with `eval/glimmer_serve.py`); the lab works without it.
+
+Or try it with nothing installed: [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez). Photograph your outfit: SAM 3.1 reads its colour and Rangrez gives a recipe to dye a matching cloth at home, in drops of blue, red and yellow household colour.
 
 ### Run it at home for free (assisted mode)
 
@@ -118,8 +184,14 @@ You can run the lab with no hardware: you are the pumps and your phone is the ca
 | Reference | A sheet of white paper; the printed colour card is better if you have one |
 | Camera | Your phone (upload, or streaming as an IP webcam) or a laptop webcam / Continuity Camera |
 
+Set the mode in `.env` (works on every OS), or inline:
+
 ```bash
-RANGREZ_RIG=assisted RANGREZ_DYES=home RANGREZ_HOST=0.0.0.0 uv run rangrez-lab
+RANGREZ_RIG=assisted RANGREZ_DYES=home RANGREZ_HOST=0.0.0.0 uv run rangrez-lab        # macOS, Linux
+```
+
+```powershell
+$env:RANGREZ_RIG="assisted"; $env:RANGREZ_DYES="home"; $env:RANGREZ_HOST="0.0.0.0"; uv run rangrez-lab   # Windows
 ```
 
 1. Open the dashboard on your laptop, or from your phone at `http://<laptop-ip>:8000`.
@@ -135,7 +207,7 @@ Without the colour card, Rangrez white-balances against the paper. Absolute colo
 On the real rig, see [hardware/BUILD.md](hardware/BUILD.md):
 
 ```bash
-RANGREZ_RIG=serial RANGREZ_PORT=/dev/cu.usbserial-0001 uv run rangrez-lab
+RANGREZ_RIG=serial RANGREZ_PORT=/dev/cu.usbserial-0001 uv run rangrez-lab   # macOS; Linux: /dev/ttyUSB0; Windows: COM3
 ```
 
 Without the parts, run the same driver against a virtual ESP32. It speaks the firmware's protocol on a pseudo serial port, with the hard limits read from the `.ino` itself, and has a light-box webcam that records video:
@@ -143,6 +215,8 @@ Without the parts, run the same driver against a virtual ESP32. It speaks the fi
 ```bash
 RANGREZ_RIG=serial RANGREZ_PORT=virtual uv run rangrez-lab
 ```
+
+The virtual board needs a POSIX pseudo terminal: macOS, Linux, or WSL on Windows.
 
 Every campaign is recorded to `recordings/<time>_<rig>/`:
 - the customer's photo;
@@ -157,7 +231,7 @@ Tests:
 uv run pytest
 ```
 
-`uv run pytest` runs 124 tests offline. They cover:
+`uv run pytest` runs 124 tests offline, with no key and no hardware. On Windows the 8 virtual-ESP32 tests are skipped (they need a POSIX pseudo terminal; run them in WSL). They cover:
 - the CIEDE2000 reference pairs;
 - colour-card correction;
 - the Kubelka-Munk model;
@@ -241,35 +315,72 @@ Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, le
 
 The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. Answers, training curves and the dataset are in `eval/glimmer/`. Published: the adapter, [TechTush/rangrez-glimmer-lora](https://huggingface.co/TechTush/rangrez-glimmer-lora), and the dip records, [TechTush/rangrez-lab-dips](https://huggingface.co/datasets/TechTush/rangrez-lab-dips). The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
 
-## Repository
+## Project structure
 
-| Path | What |
+```text
+rangrez/
+├── src/rangrez/
+│   ├── server.py            FastAPI dashboard: live events (SSE), campaigns, replays, quotas
+│   ├── static/              The dashboard (one HTML file), logo
+│   ├── agent.py             Muse Wonder tool loop, plus the offline policy
+│   ├── campaign.py          The colourist's tools: refit, suggest, dip, confirm, escalate
+│   ├── colour.py            sRGB, CIELAB, CIEDE2000, CMC l:c, colour-card correction
+│   ├── km.py                Spectral Kubelka-Munk model of reactive dye on cotton
+│   ├── vision.py            SAM 3.1 segmentation, flat field, calibrated measurement
+│   ├── rig.py               Recipes, the safety gate, the rig interface
+│   ├── serial_rig.py        Driver for the ESP32 rig
+│   ├── esp32_emulator.py    Virtual ESP32: the firmware's protocol and limits on a pseudo serial port
+│   ├── assisted.py          Assisted mode: a person with a dropper and a phone
+│   ├── sim.py               Virtual dye lab with hidden chemistry
+│   ├── photoreal.py         The simulator's camera: real-looking photos with known true colours
+│   ├── scenes/              12 Muse Image rooms and their SAM 3.1 masks
+│   ├── memory.py            Lab memory across campaigns
+│   ├── glimmer.py           Muse Glimmer's first-dip proposal
+│   ├── order.py             Order intake and reply with Muse Spark; production plan
+│   ├── preview.py           Garment preview with Muse Image, measured and corrected
+│   ├── voice.py             Hands-free commands with Muse Voice Transcribe
+│   ├── report.py            The buyer-facing lab-dip report
+│   ├── home.py              Home recipes in drops of household colour
+│   ├── recorder.py, replay.py   Record every campaign; replay recorded live runs
+│   ├── camera.py            Webcam, phone IP-webcam or video-file capture
+│   └── samples/             The sample kurta, order, and a recorded live run
+├── tests/                   124 offline tests
+├── eval/                    Benchmarks, live accuracy, Wonder vs fixed policy, night shift,
+│                            Glimmer data, fine-tunes (Fireworks, Modal), serving, baselines
+├── firmware/rangrez_rig/    ESP32 firmware with independent hard limits, watchdog, e-stop
+├── hardware/                BUILD.md (parts, wiring, chemistry, calibration), printable colour card
+├── space/                   Hugging Face Space: Dockerfile, card, deploy script
+├── assets/                  Logo, screenshots, home-run scenes
+├── LICENSE, NOTICE          Apache License 2.0
+└── pyproject.toml, uv.lock  Dependencies, pinned
+```
+
+## Built with
+
+**Meta models** (Meta Model API, `https://api.meta.ai/v1`)
+
+| Model | Used for |
 | --- | --- |
-| `src/rangrez/colour.py` | sRGB / CIELAB / CIEDE2000, colour-card correction |
-| `src/rangrez/km.py` | Spectral Kubelka-Munk model of reactive dye on cotton |
-| `src/rangrez/vision.py` | SAM 3.1 segmentation, calibrated measurement, target-from-photo |
-| `src/rangrez/rig.py` | Recipes, the safety gate, the rig interface |
-| `src/rangrez/campaign.py` | The colourist's tools: refit, suggest, dip, escalate |
-| `src/rangrez/agent.py` | Muse Wonder tool loop, plus the offline policy |
-| `src/rangrez/sim.py` | Virtual dye lab with hidden chemistry |
-| `src/rangrez/photoreal.py`, `scenes/` | The simulator's camera: real-looking phone photos with known true colours |
-| `src/rangrez/serial_rig.py` | Driver for the real rig |
-| `src/rangrez/esp32_emulator.py` | Virtual ESP32: the firmware's protocol and limits on a pseudo serial port |
-| `src/rangrez/camera.py` | Webcam, IP-webcam phone or video-file capture |
-| `src/rangrez/recorder.py` | Records every campaign for review and the demo |
-| `src/rangrez/memory.py` | Lab memory across campaigns |
-| `src/rangrez/report.py` | The buyer-facing lab-dip report |
-| `src/rangrez/voice.py` | Hands-free commands with Muse Voice Transcribe |
-| `src/rangrez/home.py` | Home recipes in drops of household colour |
-| `src/rangrez/preview.py` | Bulk preview with Muse Image, measured and corrected |
-| `src/rangrez/order.py` | Order intake with Muse Spark; production plan |
-| `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
-| `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
-| `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
-| `eval/glimmer.py`, `eval/glimmer_modal.py`, `eval/glimmer_serve.py`, `eval/glimmer/` | Glimmer's training data, fine-tunes (Fireworks, Modal), serving, evaluation and publishing |
-| `eval/night_shift.py` | Campaign after campaign with and without lab memory |
-| `src/rangrez/glimmer.py` | Glimmer's first-dip proposal in the lab |
-| `space/` | The Hugging Face Space (dashboard on the simulator; live models behind a passcode) |
+| `sam-3.1` | Segmenting the colour card, white paper, dyed strip and garment in every photo |
+| `muse-wonder-1.0` | The colourist agent: tool calls, notebook, stop or escalate |
+| `muse-spark-1.3` | Reading orders (structured JSON output) and drafting replies |
+| `muse-image-1.0` | Garment previews; the 12 test scenes and the illustrations in the demo |
+| `muse-voice-transcribe-1.0` | Hands-free commands in English and Hindi; checking the demo's voiceover |
+| `meta-models/Muse-Glimmer-30B` | Fine-tuned with LoRA on the lab's dips; weights published |
+
+**Platforms.** [Modal](https://modal.com) (Glimmer LoRA training on one H100, and serving), [Fireworks AI](https://fireworks.ai) (Serverless Training, first fine-tune), [Hugging Face](https://huggingface.co) (the Space, the weights, the dataset).
+
+**Libraries.** FastAPI, Uvicorn, NumPy, SciPy, OpenCV, Pillow, pillow-heif, pyserial, the OpenAI Python SDK (for the Meta API's OpenAI-compatible endpoints), meta-sam-parser; Transformers and PEFT for training; pytest and Ruff. Firmware: Arduino-ESP32, ArduinoJson, AccelStepper, ESP32Servo.
+
+**Demo video.** Voiceover by [Chatterbox](https://github.com/resemble-ai/chatterbox) (open weights, MIT), each take checked with Muse Voice Transcribe; music synthesised for the video; screen capture with Playwright and Chrome; edited with Python and FFmpeg.
+
+**AI assistance.** Claude Code (Anthropic) was used as a coding assistant for parts of the code, tests and documentation, directed and reviewed by the author.
+
+**Generated media.** Every image made with Muse Image is labelled as an illustration or simulation where it appears; the dip photos in the simulator are real-looking renders with known true colour, not photographs of real dye.
+
+## Licence
+
+Rangrez is released under the [Apache License 2.0](LICENSE). The published LoRA adapter is an adapter for Muse Glimmer 30B, which is also Apache 2.0.
 
 ## Built for
 

@@ -12,6 +12,8 @@ short_description: A self-driving dye lab on Meta models
 
 # Rangrez: a self-driving dye lab
 
+▶ **[Watch the 3-minute demo](https://youtu.be/g4Z30UhPtjA)** · [A recorded live run](?replay=1) · [The 2-minute tour](?tour=1)
+
 Pick a colour and press **Start campaign**. Rangrez mixes a recipe, dyes a cotton strip in its
 simulated lab (a hidden dye lot that differs from the supplier's model), photographs it like a
 phone would, measures it, and corrects itself until the cloth matches. Every dip photo is a
@@ -32,3 +34,4 @@ and see the customer's garment in the approved shade (**Muse Image**, measured a
 One lab, shared by everyone viewing: if a campaign is running, you are watching it.
 
 Code, hardware, firmware and evaluation: https://github.com/TusharTechs/rangrez
+Open weights: https://huggingface.co/TechTush/rangrez-glimmer-lora · Dataset: https://huggingface.co/datasets/TechTush/rangrez-lab-dips

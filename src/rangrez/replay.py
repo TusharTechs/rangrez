@@ -19,7 +19,7 @@ SAMPLES = Path(__file__).parent / "samples"
 def runs() -> list[dict]:
     out = []
     for d in sorted((SAMPLES / "runs").glob("*")):
-        meta = json.loads((d / "meta.json").read_text()) if (d / "meta.json").exists() else {}
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8")) if (d / "meta.json").exists() else {}
         out.append({"name": d.name, "title": meta.get("title", d.name), "started": meta.get("started", ""),
                     "agent": meta.get("agent", ""), "rig": meta.get("rig", "")})
     return out
@@ -30,8 +30,8 @@ class Replay:
         self.dir = SAMPLES / "runs" / Path(name).name  # no path tricks: a run name only
         if not (self.dir / "events.jsonl").exists():
             raise FileNotFoundError(name)
-        self.meta = json.loads((self.dir / "meta.json").read_text()) if (self.dir / "meta.json").exists() else {}
-        self.events = [json.loads(line) for line in (self.dir / "events.jsonl").read_text().splitlines() if line.strip()]
+        self.meta = json.loads((self.dir / "meta.json").read_text(encoding="utf-8")) if (self.dir / "meta.json").exists() else {}
+        self.events = [json.loads(line) for line in (self.dir / "events.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
         self.publish, self.speed, self.max_gap = publish, speed, max_gap
         self.stopped = False
         self.thread = threading.Thread(target=self._run, daemon=True)

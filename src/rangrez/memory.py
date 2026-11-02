@@ -32,7 +32,7 @@ class LabMemory:
         self.path = path
         self.data = {"dye_set": PROFILE.key, "dips": [], "campaigns": []}
         if path is not None and path.exists():
-            self.data = json.loads(path.read_text())
+            self.data = json.loads(path.read_text(encoding="utf-8"))
 
     @property
     def dips(self) -> list[dict]:
@@ -56,7 +56,7 @@ class LabMemory:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data))
+        tmp.write_text(json.dumps(self.data), encoding="utf-8")
         tmp.replace(self.path)
 
     def recent(self, n: int = RECENT_DIPS) -> list[tuple[np.ndarray, np.ndarray]]:

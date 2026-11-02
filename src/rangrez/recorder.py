@@ -40,7 +40,7 @@ class Recorder:
         with self.lock:
             self.dir = self.root / f"{time.strftime('%Y-%m-%d_%H%M%S')}_{label}"
             self.dir.mkdir(parents=True, exist_ok=True)
-            (self.dir / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
+            (self.dir / "meta.json").write_text(json.dumps(meta, indent=2, default=str), encoding="utf-8")
             for name, data in self.pending:
                 (self.dir / name).write_bytes(data)
             self.pending = []
@@ -49,7 +49,7 @@ class Recorder:
     def event(self, event: dict) -> None:
         if self.dir is None:
             return
-        with self.lock, open(self.dir / "events.jsonl", "a") as f:
+        with self.lock, open(self.dir / "events.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(event, default=str) + "\n")
 
     def save(self, name: str, data: bytes | str | dict) -> None:

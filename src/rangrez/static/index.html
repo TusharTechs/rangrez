@@ -190,6 +190,9 @@
   .case-hero img { width: 100%; height: 100%; object-fit: cover; animation: pan 26s ease-in-out infinite alternate; transform-origin: 40% 60%; }
   @keyframes pan { from { transform: scale(1.04) translateX(0); } to { transform: scale(1.14) translateX(-3%); } }
   .case-hero figcaption { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: #fff; background: rgba(20, 14, 8, .55); padding: 4px 10px; border-radius: 999px; backdrop-filter: blur(4px); }
+  .case .links { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0 0; }
+  .case .links a { font: 600 14px var(--sans); padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel, #fff); color: var(--ink); text-decoration: none; }
+  .case .links a.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
   .case { max-width: 1060px; margin: 0 auto; padding: 4px 24px 60px; }
   .case h2.big { font: 700 34px/1.15 var(--serif); text-transform: none; letter-spacing: 0; color: var(--ink); margin: 18px 0 10px; }
   .case h3 { margin-top: 34px; font-size: 24px; }
@@ -380,6 +383,10 @@
 <div id="caseView" class="case" hidden>
   <figure class="case-hero"><img src="/static/dyehouse.jpg" alt="" loading="lazy">
     <figcaption>The world Rangrez is for: a small cotton dye house. An illustration made with Muse Image, not a photo.</figcaption></figure>
+  <p class="links"><a class="primary" href="https://youtu.be/g4Z30UhPtjA" target="_blank" rel="noopener">▶ Watch the 3-minute demo</a>
+    <a href="https://github.com/TusharTechs/rangrez" target="_blank" rel="noopener">Code on GitHub</a>
+    <a href="https://huggingface.co/TechTush/rangrez-glimmer-lora" target="_blank" rel="noopener">Glimmer weights</a>
+    <a href="https://huggingface.co/datasets/TechTush/rangrez-lab-dips" target="_blank" rel="noopener">Dataset</a></p>
   <h2 class="big">A dye house's lab dip, in minutes instead of days, from a phone.</h2>
   <p>Before a garment order is dyed, the dye house dyes a small swatch, a <b>lab dip</b>, and sends it to the buyer for approval. A rejected dip means correct, re-dye, re-send: usually 2 to 4 rounds of several days each. Large mills shorten this with spectrophotometers and colour-matching software. The thousands of small dye houses and job workers in India's textile towns mostly rely on a colourist's eye and repeated trials.</p>
   <p>Rangrez runs the colourist's loop itself: pick a recipe, dye a strip, photograph it, measure it, correct it, until the cloth matches. Six Meta models each do one job in that loop.</p>

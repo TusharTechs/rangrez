@@ -3,6 +3,7 @@ name = "rangrez"
 version = "0.1.0"
 description = "A self-driving dye lab: Meta models match any colour on real cotton"
 readme = "README.md"
+license = "Apache-2.0"
 authors = [
     { name = "Tushar Agarwal", email = "tusharaggarwal274@gmail.com" }
 ]

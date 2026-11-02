@@ -482,8 +482,8 @@ def samples() -> dict:
     order = SAMPLES / "order.txt"
     read = SAMPLES / "kurta.json"  # how live SAM 3.1 read the sample photo, for visitors without the passcode
     return {"photo": "/api/samples/kurta.jpg", "concept": "kurta",
-            "read": json.loads(read.read_text()) if read.exists() else None,
-            "order": order.read_text().strip() if order.exists() else "", "runs": runs()}
+            "read": json.loads(read.read_text(encoding="utf-8")) if read.exists() else None,
+            "order": order.read_text(encoding="utf-8").strip() if order.exists() else "", "runs": runs()}
 
 
 @app.get("/api/samples/kurta.jpg")

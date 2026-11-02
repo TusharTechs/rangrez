@@ -33,7 +33,7 @@ FIRMWARE = Path(__file__).parents[2] / "firmware" / "rangrez_rig" / "rangrez_rig
 
 def firmware_limits(path: Path = FIRMWARE) -> dict[str, float]:
     """The `const float MAX_*` limits and pump calibration, as compiled into the board."""
-    src = path.read_text()
+    src = path.read_text(encoding="utf-8")
     limits = {k: float(v) for k, v in re.findall(r"const float (MAX_\w+) = ([\d.]+);", src)}
     limits["msPerMl"] = [float(v) for v in re.search(r"msPerMl\[5\] = \{([^}]*)\}", src).group(1).split(",")]
     return limits

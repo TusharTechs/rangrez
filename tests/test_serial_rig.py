@@ -9,6 +9,8 @@ import numpy as np
 import pytest
 import serial
 
+pytest.importorskip("termios", reason="the virtual ESP32 needs a POSIX pseudo terminal (macOS, Linux, WSL)")
+
 from rangrez.agent import run_deterministic
 from rangrez.campaign import Campaign
 from rangrez.colour import delta_e_2000
