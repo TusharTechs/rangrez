@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -23,7 +24,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 import numpy as np
 
-from rangrez.agent import run_with_wonder
+from rangrez.agent import run_deterministic, run_with_wonder
 from rangrez.assisted import AssistedRig
 from rangrez.campaign import Campaign
 from rangrez.colour import delta_e_2000, lab_to_hex
