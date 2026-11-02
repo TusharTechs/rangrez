@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Rangrez">
+  <title>Rangrez: three dyes, one drop, a tape of dips converging on the shade</title>
+  <defs>
+    <linearGradient id="rz-dye" x1="20" y1="4" x2="46" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#12a5bd"/>
+      <stop offset="0.5" stop-color="#d9378a"/>
+      <stop offset="1" stop-color="#f6b81c"/>
+    </linearGradient>
+    <clipPath id="rz-drop"><path d="M32 2C32 2 10 25 10 40a22 22 0 0 0 44 0C54 25 32 2 32 2Z"/></clipPath>
+  </defs>
+  <!-- the drop: turquoise, fuchsia and lemon yellow, the three reactive dyes -->
+  <path d="M32 2C32 2 10 25 10 40a22 22 0 0 0 44 0C54 25 32 2 32 2Z" fill="url(#rz-dye)"/>
+  <ellipse cx="24" cy="27" rx="4" ry="7" transform="rotate(28 24 27)" fill="#ffffff" opacity="0.22"/>
+  <!-- the tape: each dip a segment, converging on the matched shade where it passes through the drop -->
+  <g>
+    <rect x="0" y="41" width="12" height="9" rx="2" fill="#c8648f"/>
+    <rect x="13" y="41" width="9" height="9" fill="#7d6aa6"/>
+    <g clip-path="url(#rz-drop)"><rect x="22" y="41" width="42" height="9" fill="#2f7f8f"/></g>
+    <rect x="22" y="41" width="20" height="9" fill="#2f7f8f"/>
+    <rect x="42" y="41" width="22" height="9" rx="2" fill="#2f7f8f"/>
+    <path d="M0 43.5h64M0 47.5h64" stroke="#ffffff" stroke-opacity="0.22" stroke-width="0.8"/>
+  </g>
+</svg>

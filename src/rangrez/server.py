@@ -19,6 +19,7 @@ import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .agent import WONDER_MODEL, run_deterministic, run_with_wonder
@@ -35,6 +36,7 @@ load_dotenv()
 STATIC = Path(__file__).parent / "static"
 
 app = FastAPI(title="Rangrez")
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 class Lab:
@@ -478,7 +480,9 @@ def samples() -> dict:
     from .replay import SAMPLES, runs
 
     order = SAMPLES / "order.txt"
+    read = SAMPLES / "kurta.json"  # how live SAM 3.1 read the sample photo, for visitors without the passcode
     return {"photo": "/api/samples/kurta.jpg", "concept": "kurta",
+            "read": json.loads(read.read_text()) if read.exists() else None,
             "order": order.read_text().strip() if order.exists() else "", "runs": runs()}
 
 
@@ -508,6 +512,17 @@ def replay(name: str) -> dict:
     LAB.replay = r
     r.start()
     return {"ok": True, "recorded": r.meta.get("started", "")}
+
+
+@app.get("/api/replay-file/{name}")
+def replay_file(name: str) -> Response:
+    """What else a recorded run produced: the buyer's order and the reply Muse Spark drafted."""
+    if LAB.replay is None or name not in ("order.json", "reply.txt", "target.json"):
+        raise HTTPException(404)
+    data = LAB.replay.file(name)
+    if data is None:
+        raise HTTPException(404)
+    return Response(data, media_type="application/json" if name.endswith(".json") else "text/plain; charset=utf-8")
 
 
 @app.get("/api/memory")

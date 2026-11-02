@@ -3,295 +3,550 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rangrez — self-driving dye lab</title>
+<title>Rangrez · a self-driving dye lab</title>
+<link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0f1012; --panel: #17191c; --line: #2a2d32; --ink: #eceae6; --mute: #9a968f;
-    --accent: #e8a33d; --ok: #3fb97f; --warn: #e2b43c; --bad: #e0614f; --cyan: #33d6e8;
+    --bg: #f5efe4; --panel: #fffcf6; --panel2: #fbf6ec; --ink: #241f1a; --mute: #7a7166; --line: #e7dccb;
+    --dye: #2f5d8a; --ok: #2d7a52; --warn: #b07a12; --bad: #b3432d; --cyan: #1b8aa0; --shadow: 0 1px 2px #3a2a1214, 0 8px 24px #3a2a120f;
+    --serif: "Fraunces", Georgia, serif; --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; align-items: baseline; gap: 14px; padding: 16px 22px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  header h1 { margin: 0; font-size: 22px; letter-spacing: .5px; }
-  header .sub { color: var(--mute); }
-  .pill { padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); font-size: 12px; color: var(--mute); }
-  .pill.running { color: var(--accent); border-color: var(--accent); }
-  .pill.matched { color: var(--ok); border-color: var(--ok); }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+  a { color: var(--dye); }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 9px 14px; font-weight: 600; }
+  button.primary { background: var(--ink); color: #fffcf6; border-color: var(--ink); }
+  button.dye { background: var(--dye); color: #fff; border-color: transparent; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.small { padding: 5px 10px; font-size: 12.5px; font-weight: 500; }
+  textarea, input[type=text], input[type=number], input[type=password], select { width: 100%; background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; }
+  label { display: block; color: var(--mute); font-size: 12px; margin: 10px 0 4px; }
+  .hint { color: var(--mute); font-size: 12.5px; margin: 6px 0 0; }
+  [hidden] { display: none !important; }
+
+  /* ---- header ---- */
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand .hi { font-family: "Tiro Devanagari Hindi", serif; font-size: 22px; color: var(--dye); line-height: 1; transition: color .8s; }
+  .brand h1 { font-family: var(--serif); font-size: 26px; margin: 0; letter-spacing: .2px; }
+  .brand .sub { color: var(--mute); font-size: 13px; }
+  .tabs { display: flex; gap: 4px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+  .tabs button { border: 0; background: transparent; padding: 6px 14px; font-weight: 600; color: var(--mute); }
+  .tabs button[aria-selected=true] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+  .spacer { flex: 1; }
+  .pill { padding: 4px 11px; border-radius: 99px; border: 1px solid var(--line); font-size: 12px; color: var(--mute); background: var(--panel); white-space: nowrap; }
+  .pill.running { color: var(--dye); border-color: var(--dye); }
+  .pill.waiting { color: var(--cyan); border-color: var(--cyan); }
+  .pill.matched { color: #fff; background: var(--ok); border-color: var(--ok); }
   .pill.out_of_gamut { color: var(--warn); border-color: var(--warn); }
   .pill.escalated, .pill.error { color: var(--bad); border-color: var(--bad); }
-  .spacer { flex: 1; }
-  main { display: grid; grid-template-columns: 300px minmax(0, 1fr) 360px; gap: 14px; padding: 14px 22px; }
-  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
-  h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--mute); font-weight: 600; }
-  .stack > * + * { margin-top: 14px; }
-  label { display: block; color: var(--mute); font-size: 12px; margin-bottom: 4px; }
-  textarea, input[type=text], input[type=number] { width: 100%; background: #0c0d0f; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
-  input[type=color] { width: 100%; height: 44px; border: 1px solid var(--line); border-radius: 6px; background: none; padding: 2px; }
-  button { width: 100%; background: var(--accent); color: #1a1206; border: 0; border-radius: 7px; padding: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
-  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
-  button:disabled { opacity: .5; cursor: default; }
-  .row { display: flex; gap: 8px; }
-  .compare { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: stretch; }
-  .chip { border-radius: 10px; min-height: 150px; border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: flex-end; padding: 10px; transition: background .6s; }
-  .chip span { background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 5px; align-self: flex-start; font-size: 12px; font-variant-numeric: tabular-nums; }
-  .de { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 120px; }
-  .de b { font-size: 44px; font-variant-numeric: tabular-nums; line-height: 1; }
-  .de small { color: var(--mute); margin-top: 6px; text-align: center; }
-  .de.pass b { color: var(--ok); }
-  #previewImg { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin-top: 8px; }
-  #frame { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #000; aspect-ratio: 16/9; object-fit: contain; }
-  svg { width: 100%; height: 170px; display: block; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
-  td, th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+
+  /* ---- Meta model chips ---- */
+  .labbar { display: flex; align-items: center; gap: 12px; padding: 0 24px 12px; flex-wrap: wrap; }
+  .models { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .facts { color: var(--mute); font-size: 12px; white-space: nowrap; }
+  header { border-bottom: 1px solid var(--line); margin-bottom: 12px; background: linear-gradient(180deg, #fffaf1, var(--bg)); }
+  #tourBtn { box-shadow: 0 6px 18px #24201b33; }
+  .model { display: flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); font-size: 12.5px; color: var(--mute); transition: all .25s; }
+  .model b { color: var(--ink); font-weight: 600; }
+  .model i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); transition: background .25s, box-shadow .25s; }
+  .model .n { font-variant-numeric: tabular-nums; color: var(--mute); }
+  .model.live { border-color: var(--dye); color: var(--ink); }
+  .model.live i { background: var(--dye); box-shadow: 0 0 0 4px color-mix(in srgb, var(--dye) 25%, transparent); }
+
+  .banner { margin: 0 24px 10px; padding: 9px 14px; border-radius: 10px; background: #fff4d6; border: 1px solid #ecd28a; color: #6b4e00; font-size: 13px; }
+
+  /* ---- the tape: every dip is a segment of cotton tape ---- */
+  .tape-wrap { margin: 0 24px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 10px; box-shadow: var(--shadow); }
+  .tape-wrap h2 { margin: 0 0 8px; }
+  .tape { display: flex; align-items: flex-end; gap: 2px; min-height: 104px; overflow-x: auto; padding: 4px 2px 6px; }
+  .seg { position: relative; flex: 0 0 132px; display: flex; flex-direction: column; justify-content: flex-end; animation: soak 1.4s ease-out, slidein .5s ease-out; }
+  .seg .cloth { height: 74px; background-color: var(--c);
+      background-image: linear-gradient(180deg, #ffffff30 0, transparent 22%, transparent 70%, #00000024 100%),
+        repeating-linear-gradient(45deg, #ffffff12 0 1.5px, transparent 1.5px 4px), repeating-linear-gradient(-45deg, #0000000d 0 1px, transparent 1px 5px);
+      box-shadow: 0 6px 14px -6px #3a2a1255, inset 0 0 0 1px #00000014; }
+  .seg:first-child .cloth { border-radius: 6px 0 0 6px; }
+  .seg small { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--mute); padding: 6px 4px 0; font-variant-numeric: tabular-nums; }
+  .seg small b { font: 700 16px var(--serif); color: var(--ink); }
+  .seg.pass small b { color: var(--ok); }
+  .seg.pass small b::after { content: " ✓"; font-size: 13px; }
+  .arrow { flex: 0 0 auto; align-self: center; margin: 0 10px 18px; color: var(--mute); font-size: 20px; }
+  .seg.target { flex-basis: 150px; }
+  .seg.target .cloth { border-radius: 0 10px 10px 0; box-shadow: 0 0 0 3px var(--panel), 0 0 0 5px var(--c), 0 8px 18px -6px #3a2a1266; }
+  .seg.empty { flex: 1 1 auto; }
+  .seg.empty .cloth { background-color: #fbf8f2; border-radius: 6px 0 0 6px; }
+  @keyframes slidein { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes soak { from { filter: saturate(0) brightness(1.4); } to { filter: none; } }
+
+  /* ---- layout ---- */
+  main { display: grid; grid-template-columns: 330px minmax(0, 1fr) 330px; gap: 14px; padding: 0 24px 24px; }
+  @media (max-width: 1180px) { main { grid-template-columns: 1fr 1fr; } .col-right { grid-column: span 2; } }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } .col-right { grid-column: auto; } header { padding: 12px 16px; } .models, .tape-wrap, main { padding-left: 16px; padding-right: 16px; } .tape-wrap { margin-left: 16px; margin-right: 16px; } }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); min-width: 0; }
+  h2 { margin: 0 0 10px; font: 600 11.5px var(--sans); text-transform: uppercase; letter-spacing: 1.1px; color: var(--mute); }
+  h3 { font-family: var(--serif); font-size: 22px; margin: 0 0 8px; letter-spacing: -.2px; }
+  .tape-wrap h2 { display: flex; justify-content: space-between; }
+
+  /* start card */
+  .quick { display: grid; gap: 8px; }
+  .presets { display: flex; gap: 8px; margin-top: 10px; }
+  .presets button { flex: 1; height: 38px; padding: 0; border-radius: 9px; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+  .presets button[aria-pressed=true] { box-shadow: 0 0 0 2px var(--ink); }
+  .pick { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .pick input[type=color] { width: 44px; height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 2px; background: #fff; }
+  details { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 10px; }
+  summary { cursor: pointer; color: var(--mute); font-weight: 600; font-size: 12.5px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+
+  /* hero: camera + gauge */
+  .camera { position: relative; border-radius: 12px; overflow: hidden; background: #ece4d6; aspect-ratio: 3/2; display: flex; align-items: center; justify-content: center; }
+  .camera img { width: 100%; height: 100%; object-fit: contain; background: #1b1916; }
+  .camera .empty { color: var(--mute); text-align: center; padding: 20px; max-width: 360px; }
+  .camera .empty b { display: block; font-family: var(--serif); font-size: 28px; color: var(--ink); margin-bottom: 8px; letter-spacing: -.3px; }
+  .camera .empty .row > * { flex: 0 0 auto; }
+  .caption { font-size: 12.5px; color: var(--mute); margin-top: 8px; }
+  .gauge-box { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .gauge { position: relative; width: 190px; height: 190px; }
+  .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge .val { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge .val b { font: 700 46px var(--serif); font-variant-numeric: tabular-nums; line-height: 1; }
+  .gauge .val small { color: var(--mute); font-size: 12px; margin-top: 4px; }
+  .gauge.pass .val b { color: var(--ok); }
+  .gauge.pass { animation: pulse 1.4s ease-out; }
+  @keyframes pulse { 0% { transform: scale(1); } 30% { transform: scale(1.05); } 100% { transform: scale(1); } }
+  .split { display: grid; grid-template-columns: 1fr 1fr; width: 100%; border-radius: 12px; overflow: hidden; height: 84px; margin-top: 8px; box-shadow: inset 0 0 0 1px #00000014; }
+  .split div { display: flex; align-items: flex-end; padding: 6px 8px; font-size: 11.5px; transition: background .8s; }
+  .split span { background: #fffcf6e6; padding: 2px 7px; border-radius: 5px; font-variant-numeric: tabular-nums; }
+  .verdict { text-align: center; font-size: 13px; color: var(--mute); min-height: 20px; }
+  .outcome { border: 2px solid var(--ok); }
+  .outcome h3 { color: var(--ok); }
+
+  /* assist */
+  .assist { border: 2px solid var(--dye); }
+  .amounts { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .amount { flex: 1; min-width: 86px; border: 1px solid var(--line); border-radius: 10px; padding: 10px; text-align: center; background: var(--panel2); }
+  .amount b { display: block; font: 700 30px var(--serif); font-variant-numeric: tabular-nums; }
+  .amount small { color: var(--mute); }
+  .assist ol { margin: 0 0 12px; padding-left: 20px; } .assist li { margin: 3px 0; }
+
+  /* charts, tables, feeds */
+  svg.chart { width: 100%; height: 160px; display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
   th { color: var(--mute); font-weight: 500; }
-  .hint .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin: 0 4px; border: 1px solid #0006; }
-  td .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; border: 1px solid #0006; }
-  .feed { max-height: 280px; overflow: auto; font-size: 12.5px; }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; box-shadow: inset 0 0 0 1px #0002; }
+  .feed { max-height: 300px; overflow: auto; font-size: 12.5px; }
   .feed div { padding: 6px 0; border-bottom: 1px dashed var(--line); }
-  .feed .who { color: var(--accent); font-weight: 600; margin-right: 6px; }
+  .feed .who { color: var(--dye); font-weight: 700; margin-right: 6px; }
   .feed .tool { color: var(--cyan); }
   .feed .gate { color: var(--bad); }
   .feed .muted { color: var(--mute); }
   .api div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-  .api .m { color: var(--cyan); }
-  .hint { color: var(--mute); font-size: 12px; }
-  .assist { border-color: var(--accent); }
-  .assist[hidden] { display: none; }
-  .amounts { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
-  .amount { flex: 1; min-width: 90px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
-  .amount b { display: block; font-size: 30px; font-variant-numeric: tabular-nums; }
-  .amount small { color: var(--mute); }
-  .assist ol { margin: 0 0 12px; padding-left: 20px; }
-  .assist li { margin: 3px 0; }
-  .pill.waiting { color: var(--cyan); border-color: var(--cyan); }
-  .pill.stopped { color: var(--mute); }
+  .api .m { color: var(--cyan); font-weight: 600; }
+  .log summary { font: 600 11.5px var(--sans); text-transform: uppercase; letter-spacing: 1.1px; }
+  .log[open] summary { margin-bottom: 10px; }
+  #previewImg { width: 100%; border-radius: 10px; margin-top: 8px; }
+
+  /* ---- the case ---- */
+  .case { max-width: 1060px; margin: 0 auto; padding: 4px 24px 60px; }
+  .case h2.big { font: 700 34px/1.15 var(--serif); text-transform: none; letter-spacing: 0; color: var(--ink); margin: 18px 0 10px; }
+  .case h3 { margin-top: 34px; font-size: 24px; }
+  .case p { font-size: 15px; max-width: 760px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); }
+  .card .num { font: 700 30px var(--serif); color: var(--dye); }
+  .card .label { color: var(--mute); font-size: 13px; }
+  .compare td, .compare th { font-size: 13.5px; padding: 8px 6px; vertical-align: top; }
+  .yes { color: var(--ok); font-weight: 700; } .no { color: var(--bad); } .part { color: var(--warn); }
+  .limits li { margin: 6px 0; }
+
+  /* ---- tour ---- */
+  .tour-spot { position: fixed; z-index: 50; border-radius: 14px; box-shadow: 0 0 0 9999px #1c140acc; transition: all .35s ease; pointer-events: none; }
+  .tour-card { position: fixed; z-index: 51; width: min(380px, calc(100vw - 32px)); background: var(--panel); border-radius: 14px; padding: 18px; box-shadow: 0 20px 60px #0008; transition: top .35s, left .35s; }
+  .tour-card h3 { margin: 0 0 6px; }
+  .tour-card p { margin: 0 0 14px; color: #3d362e; }
+  .tour-card .steps { color: var(--mute); font-size: 12px; }
+  .tour-card .row { margin-top: 4px; }
+  .tour-card .row > * { flex: 0 0 auto; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Rangrez</h1>
-  <span class="sub">a self-driving dye lab on Meta models</span>
+  <div class="brand"><img src="/static/logo.svg" alt="" width="40" height="40" style="align-self:center"><h1>Rangrez</h1><span class="hi" aria-hidden="true">रंगरेज़</span><span class="sub">a self-driving dye lab on Meta models</span></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabLab" aria-selected="true">The lab</button>
+    <button role="tab" id="tabCase" aria-selected="false">The case</button>
+  </div>
   <span class="spacer"></span>
-  <span class="pill" id="agent">agent: …</span>
-  <span class="pill" id="rig">rig: …</span>
-  <span class="pill" id="memory">lab memory</span>
   <span class="pill" id="status">idle</span>
+  <button class="primary" id="tourBtn">▶ Take the 2-minute tour</button>
 </header>
 
+<div class="labbar">
+  <div class="models" id="models" aria-label="Meta models, lighting up as they are called"></div>
+  <div class="facts"><span id="rig">rig: …</span> · <span id="agent">agent: …</span> · <span id="memory">lab memory</span></div>
+</div>
+<div class="banner" id="replayBanner" hidden></div>
+
+<div id="labView">
+<div class="tape-wrap" id="tapeWrap">
+  <h2><span>The tape: every dip, dyed and measured, ending at the target</span><span id="tapeNote"></span></h2>
+  <div class="tape" id="tape"></div>
+</div>
+
 <main>
-  <div class="stack">
-    <section>
-      <h2>Target shade</h2>
-      <label for="picker">Pick a colour</label>
-      <input type="color" id="picker" value="#4b909d">
-      <div style="height:10px"></div>
-      <label for="photo">…or match an object in a photo</label>
-      <input type="file" id="photo" accept="image/*">
-      <div style="height:6px"></div>
-      <input type="text" id="concept" value="kurta" aria-label="Object to match in the photo">
-      <div style="height:8px"></div>
-      <button class="ghost" id="usePhoto">Read colour with SAM 3.1</button>
+  <div class="col">
+    <section id="startCard">
+      <h3>Match a colour</h3>
+      <div class="quick">
+        <button class="dye" id="sampleBtn">Match this kurta (sample photo)</button>
+        <button id="replayBtn">Watch a recorded live run</button>
+      </div>
+      <div class="presets" id="presets" aria-label="Preset shades"></div>
+      <div class="pick">
+        <input type="color" id="picker" value="#4b909d" aria-label="Pick a target colour">
+        <button class="primary" id="start" style="flex:1">Start the lab</button>
+        <button class="small" id="stop">Stop</button>
+      </div>
       <p class="hint" id="photoNote"></p>
       <p class="hint" id="homeRecipe" hidden></p>
-      <label for="orderMsg">…and the buyer's message (optional)</label>
-      <textarea id="orderMsg" rows="3" placeholder="e.g. need 500 kurtas in this teal, cotton poplin, by Friday. Buyer is strict on shade."></textarea>
-      <div style="height:6px"></div>
-      <button class="ghost" id="readOrder">Read the order with Muse Spark</button>
-      <p class="hint" id="orderNote"></p>
-      <label for="tol">Pass tolerance (CIEDE2000)</label>
-      <input type="number" id="tol" value="1.5" step="0.1" min="0.5" max="5">
-      <div style="height:12px"></div>
-      <div id="liveBox" hidden>
-        <label for="passcode">Live passcode (runs SAM 3.1 and Muse Wonder; without it, the offline policy)</label>
-        <input type="password" id="passcode" autocomplete="off">
-        <div style="height:12px"></div>
-      </div>
-      <button id="start">Start campaign</button>
-      <div style="height:8px"></div>
-      <button class="ghost" id="stop">Stop</button>
-      <div style="height:8px"></div>
-      <div class="row"><button class="ghost" id="handsFree" aria-pressed="false">Hands-free voice: off</button>
-        <select id="lang" aria-label="Voice language"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
-      <p class="hint" id="voiceNote">Say "done" when the strip is dry, "repeat", or "stop". Anything else goes to the colourist's notebook.</p>
+      <details id="advanced">
+        <summary>Your own photo, the buyer's message, voice, settings</summary>
+        <label for="photo">A photo of the garment to match (with the colour card or white paper in view)</label>
+        <input type="file" id="photo" accept="image/*">
+        <div class="row" style="margin-top:6px"><input type="text" id="concept" value="kurta" aria-label="Object to match in the photo"><button class="small" id="usePhoto">Read with SAM 3.1</button></div>
+        <label for="orderMsg">The buyer's message (English or Hindi)</label>
+        <textarea id="orderMsg" rows="3" placeholder="e.g. need 500 kurtas in this teal, cotton poplin, by Friday. Buyer is strict on shade."></textarea>
+        <button class="small" id="readOrder" style="margin-top:6px">Read the order with Muse Spark</button>
+        <p class="hint" id="orderNote"></p>
+        <label for="tol">Pass tolerance, CIEDE2000 (smaller is stricter; 1.0 strict, 1.5 normal, 2.0 relaxed)</label>
+        <input type="number" id="tol" value="1.5" step="0.1" min="0.5" max="5">
+        <div id="liveBox" hidden>
+          <label for="passcode">Live passcode (runs the Meta models live; without it, the offline policy)</label>
+          <input type="password" id="passcode" autocomplete="off">
+        </div>
+        <label>Hands-free (the dyer's gloves are wet)</label>
+        <div class="row"><button class="small" id="handsFree" aria-pressed="false">Hands-free voice: off</button>
+          <select id="lang" aria-label="Voice language"><option value="en">English</option><option value="hi">हिन्दी</option></select></div>
+        <p class="hint" id="voiceNote">Say "done" when the strip is dry, "repeat", or "stop" ("हो गया", "फिर से", "बंद करो"). Anything else goes to the colourist's notebook.</p>
+      </details>
     </section>
+
     <section>
-      <h2>Meta API calls</h2>
-      <div class="feed api" id="api"><div class="muted">No calls yet.</div></div>
+      <h2>Convergence</h2>
+      <svg class="chart" id="chart" viewBox="0 0 340 160" role="img" aria-label="Colour difference per dip"></svg>
     </section>
   </div>
 
-  <div class="stack">
+  <div class="col">
     <section class="assist" id="assist" hidden>
       <h2 id="assistTitle">Your turn: dip 1</h2>
       <div class="amounts" id="amounts"></div>
       <ol id="assistSteps"></ol>
-      <label for="assistPhoto">Photo of the dried strip next to the colour card or on white paper</label>
+      <label for="assistPhoto">Photo of the dried strip on white paper or next to the colour card</label>
       <input type="file" id="assistPhoto" accept="image/*" capture="environment">
-      <div style="height:8px"></div>
-      <div class="row"><button id="sendPhoto">Send photo</button><button class="ghost" id="useWebcam">Use webcam</button></div>
+      <div class="row" style="margin-top:8px"><button class="dye" id="sendPhoto">Send photo</button><button id="useWebcam">Use webcam</button></div>
       <p class="hint" id="assistNote"></p>
     </section>
-    <section>
-      <h2>Latest dip vs target</h2>
-      <div class="compare">
-        <div class="chip" id="targetChip"><span id="targetLabel">target</span></div>
-        <div class="de" id="deBox"><b id="de">—</b><small id="deNote">CIEDE2000</small></div>
-        <div class="chip" id="dipChip"><span id="dipLabel">no dip yet</span></div>
+
+    <section id="cameraCard">
+      <h2>What the camera sees · SAM 3.1 masks: colour card (yellow), strip (cyan)</h2>
+      <div class="camera" id="camera">
+        <div class="empty" id="cameraEmpty"><img src="/static/logo.svg" alt="" width="84" height="84" style="display:block;margin:0 auto 12px">
+          <b>Show Rangrez a colour.</b>It picks a recipe, a strip is dyed, a phone photographs it, and it corrects the recipe until the cloth matches.
+          <div class="row" style="margin-top:16px;justify-content:center"><button class="dye" onclick="$('sampleBtn').click()">Match a kurta</button><button onclick="$('replayBtn').click()">Watch a live run</button></div></div>
+        <img id="frame" hidden alt="The latest dip photo with SAM 3.1's masks">
       </div>
-      <p class="hint"><a id="reportLink" href="/api/report.html" target="_blank" rel="noopener" hidden>Lab-dip report for the buyer ↗</a></p>
-      <button class="ghost" id="previewBtn" hidden>Preview the customer's garment in this shade (Muse Image)</button>
+      <div class="caption" id="frameCaption"></div>
+    </section>
+
+    <section class="outcome" id="outcome" hidden>
+      <h3 id="outcomeTitle">Matched</h3>
+      <p class="hint" id="outcomeText"></p>
+      <div class="row" style="margin-top:10px; flex-wrap: wrap">
+        <a id="reportLink" href="/api/report.html" target="_blank" rel="noopener"><button class="primary" style="width:100%">Open the lab-dip report</button></a>
+        <button id="previewBtn" hidden>See the garment in this shade (Muse Image)</button>
+        <button id="replyBtn" hidden>Draft the reply to the buyer (Muse Spark)</button>
+      </div>
       <p class="hint" id="previewNote"></p>
       <img id="previewImg" hidden alt="The customer's garment recoloured to the dip's shade">
-      <button class="ghost" id="replyBtn" hidden>Draft the reply to the buyer (Muse Spark)</button>
-      <textarea id="replyText" rows="5" hidden aria-label="Reply to the buyer"></textarea>
+      <textarea id="replyText" rows="5" hidden aria-label="Reply to the buyer" style="margin-top:8px"></textarea>
       <p class="hint" id="replyNote"></p>
-    </section>
-    <section>
-      <h2>Camera — SAM 3.1 masks: card (yellow), strip (cyan)</h2>
-      <img id="frame" hidden alt="Latest camera frame from the rig with segmentation boxes">
     </section>
   </div>
 
-  <div class="stack">
-    <section>
-      <h2>Convergence</h2>
-      <svg id="chart" viewBox="0 0 340 170" role="img" aria-label="Colour difference per dip"></svg>
+  <div class="col col-right">
+    <section id="gaugeCard">
+      <h2>Latest dip against the target</h2>
+      <div class="gauge-box">
+        <div class="gauge" id="gauge">
+          <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#efe6d8" stroke-width="10"/>
+            <circle id="gaugeArc" cx="60" cy="60" r="52" fill="none" stroke="var(--dye)" stroke-width="10" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" style="transition: stroke-dashoffset .9s, stroke .4s"/></svg>
+          <div class="val"><b id="de">—</b><small id="deNote">ΔE00 (CIEDE2000)</small></div>
+        </div>
+        <div class="verdict" id="verdict">Below the tolerance is a match.</div>
+        <div class="split"><div id="targetChip"><span id="targetLabel">target</span></div><div id="dipChip"><span id="dipLabel">no dip yet</span></div></div>
+      </div>
     </section>
-    <section>
+
+    <section id="learningCard">
       <h2>The lab learning this dye lot</h2>
-      <svg id="learning" viewBox="0 0 340 150" role="img" aria-label="Dips per campaign and first-dip error, campaign by campaign"></svg>
+      <svg class="chart" id="learning" viewBox="0 0 340 150" role="img" aria-label="Dips per campaign and first-dip error, campaign by campaign"></svg>
       <p class="hint" id="learningNote">Each campaign starts from everything the lab remembers about this dye lot.</p>
     </section>
-    <section>
-      <h2>Dips</h2>
-      <table><thead><tr><th>#</th><th>recipe (<span id="dyeHead">dyes</span>)</th><th>ΔE00</th></tr></thead><tbody id="shots"></tbody></table>
-    </section>
-    <section>
-      <h2>Lab notebook</h2>
-      <div class="feed" id="notebook"><div class="muted">The agent writes here.</div></div>
+
+    <section id="logCard">
+      <details class="log" id="logDetails">
+        <summary>Lab log: Wonder's notebook, dips, Meta API calls</summary>
+        <h2>Notebook</h2>
+        <div class="feed" id="notebook"><div class="muted">Muse Wonder writes its reasoning here.</div></div>
+        <h2 style="margin-top:14px">Dips</h2>
+        <table><thead><tr><th>#</th><th>recipe (<span id="dyeHead">dyes</span>)</th><th>ΔE00</th></tr></thead><tbody id="shots"></tbody></table>
+        <h2 style="margin-top:14px">Meta API calls</h2>
+        <div class="feed api" id="api"><div class="muted">No calls yet.</div></div>
+      </details>
     </section>
   </div>
 </main>
+</div>
+
+<div id="caseView" class="case" hidden>
+  <h2 class="big">A dye house's lab dip, in minutes instead of days, from a phone.</h2>
+  <p>Before a garment order is dyed, the dye house dyes a small swatch, a <b>lab dip</b>, and sends it to the buyer for approval. A rejected dip means correct, re-dye, re-send: usually 2 to 4 rounds of several days each. Large mills shorten this with spectrophotometers and colour-matching software. The thousands of small dye houses and job workers in India's textile towns mostly rely on a colourist's eye and repeated trials.</p>
+  <p>Rangrez runs the colourist's loop itself: pick a recipe, dye a strip, photograph it, measure it, correct it, until the cloth matches. Six Meta models each do one job in that loop.</p>
+
+  <h3>Six Meta models, six real jobs</h3>
+  <div class="cards">
+    <div class="card"><b>SAM 3.1</b><div class="label">A measuring instrument: segments the colour card, the white paper and the dyed strip in every photo, so pixels become calibrated CIELAB.</div></div>
+    <div class="card"><b>Muse Wonder</b><div class="label">The colourist: runs each campaign through tools (suggest, dip, refit, escalate) and writes the lab notebook. It never drives a pump directly.</div></div>
+    <div class="card"><b>Muse Glimmer 30B</b><div class="label">Open weights, fine-tuned on the lab's own dips to propose the first recipe; v2 reads the lab's notebook. Weights published.</div></div>
+    <div class="card"><b>Muse Spark</b><div class="label">Reads the buyer's chat message (English or Hindi) into an order, sets the pass tolerance, and drafts the reply in the buyer's language.</div></div>
+    <div class="card"><b>Muse Image</b><div class="label">Shows the customer's garment in the approved shade; SAM measures and corrects it, because an image model is not a colour instrument.</div></div>
+    <div class="card"><b>Muse Voice Transcribe</b><div class="label">Hands-free for a dyer with wet gloves: "done", "repeat", "stop", or "हो गया", "फिर से", "बंद करो".</div></div>
+  </div>
+
+  <h3>What it has shown so far</h3>
+  <p class="hint">All on the simulator: hidden dye chemistry and real-looking phone photos with known true colours. No real dye on real cloth yet.</p>
+  <div class="cards">
+    <div class="card"><div class="num">0.66</div><div class="label">median ΔE00 measuring a strip from a phone photo with the printed colour card (live SAM 3.1, 22 photos); 1.17 with white paper only</div></div>
+    <div class="card"><div class="num">24 / 24</div><div class="label">shades matched in a median of 2 dips on the robot rig's reactive dyes, every dip photographed in a different room</div></div>
+    <div class="card"><div class="num">3.81 → 1.40</div><div class="label">the first dip's error over a 40-campaign night shift, as lab memory learns the dye lot; dips per match 2.35 → 1.65</div></div>
+    <div class="card"><div class="num">4.10 → 0.92</div><div class="label">first-dip error, supplier's model vs fine-tuned Glimmer; a Gaussian process on the same dips reaches 0.77, and we say so</div></div>
+    <div class="card"><div class="num">8 / 8</div><div class="label">live campaigns matched with SAM 3.1 and Muse Wonder on realistic photos; the agent's reading within 0.2 of the truth</div></div>
+    <div class="card"><div class="num">126</div><div class="label">offline tests: colour science, safety gate, firmware emulator, voice, reports, every photo realistic</div></div>
+  </div>
+
+  <h3>What only Rangrez does</h3>
+  <table class="compare">
+    <thead><tr><th></th><th>Colourist by eye</th><th>Spectrophotometer + matching software</th><th>A general AI chat</th><th>Rangrez</th></tr></thead>
+    <tbody>
+      <tr><td>Equipment</td><td class="yes">none</td><td class="part">an instrument and software licence, quote-based</td><td class="yes">none</td><td class="yes">a phone and a printed card; a $100 rig to automate</td></tr>
+      <tr><td>Measures the dyed cloth</td><td class="no">by eye</td><td class="yes">precisely</td><td class="no">no</td><td class="part">from a phone photo, ±0.7 ΔE00 with the card</td></tr>
+      <tr><td>Proposes and corrects the recipe</td><td class="part">by experience</td><td class="yes">yes</td><td class="no">guesses</td><td class="yes">yes, from a model refitted to real dips</td></tr>
+      <tr><td>Runs the loop itself (recipe, dip, measure, correct)</td><td class="no">no</td><td class="no">no</td><td class="no">no</td><td class="yes">yes, with a safety gate and a human escalation</td></tr>
+      <tr><td>Learns this dye lot across campaigns</td><td class="part">in one head</td><td class="part">some correction features</td><td class="no">no</td><td class="yes">lab memory, plus a fine-tuned open model</td></tr>
+      <tr><td>Reads the buyer's WhatsApp order, replies in their language</td><td class="no">no</td><td class="no">no</td><td class="part">if asked</td><td class="yes">Muse Spark, English or Hindi</td></tr>
+      <tr><td>Hands-free in Hindi</td><td class="yes">it's a person</td><td class="no">no</td><td class="no">no</td><td class="yes">Muse Voice Transcribe</td></tr>
+      <tr><td>Buyer-ready lab-dip report</td><td class="no">no</td><td class="yes">yes</td><td class="no">no</td><td class="yes">ΔE00 and CMC 2:1, options A/B/C, recipe in % owf, production plan</td></tr>
+      <tr><td>A home recipe for anyone's outfit</td><td class="no">no</td><td class="no">no</td><td class="no">no</td><td class="yes">photograph it, get drops of household colour</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Where it stands, honestly</h3>
+  <ul class="limits">
+    <li><b>Simulated, not yet dyed for real.</b> The physics, photos and chemistry are simulated. The first real campaign, household colours on a cotton strip with a phone, is the next step.</li>
+    <li><b>The robot rig is designed, not built.</b> Firmware, wiring and a virtual ESP32 that runs the real driver are done; the parts are about ₹8,000.</li>
+    <li><b>A camera is a pre-screen, not a certificate.</b> ±0.7 ΔE00 with the card is good enough to correct fast, not to certify a strict 1.0 pass; it cannot check metamerism. Final approval stays with the buyer's instrument or light booth.</li>
+    <li><b>A lab dip must follow the bulk process.</b> Fixing, rinsing and soaping are in the protocol; transferring a recipe to bulk still needs the dye house's own lab-to-bulk factor.</li>
+    <li><b>Household colours are for learning and play.</b> Food colours and inks are not wash-fast; dye houses use reactive dyes.</li>
+    <li><b>Glimmer is not magic.</b> On the same data a Gaussian process matches it; Glimmer earns its place by reading the lab's notebook and working with language.</li>
+  </ul>
+
+  <h3>Why it can work</h3>
+  <div class="cards">
+    <div class="card"><b>Technically</b><div class="label">Runs on a laptop and a phone; the measuring, chemistry and safety are plain tested code, and the Meta models do what they are best at. Every campaign is recorded and replayable.</div></div>
+    <div class="card"><b>For the business</b><div class="label">Each avoided round saves days of a buyer's lead time and a courier; the report is the document the buyer already asks for. Per-dip or monthly pricing for small dye houses and sourcing agents.</div></div>
+    <div class="card"><b>For the people using it</b><div class="label">Phone first, Hindi, hands-free, WhatsApp-shaped. No new instrument to learn: photograph, dip, send.</div></div>
+    <div class="card"><b>The adoption path</b><div class="label">1) assisted mode with a phone, zero capex; 2) the $100 rig for unattended dips; 3) a handheld spectrophotometer in place of the camera for strict shades, same agent and memory.</div></div>
+  </div>
+
+  <h3>What it could become</h3>
+  <ul class="limits">
+    <li>Real-dye pilots with job-work dye houses in Tiruppur and Erode.</li>
+    <li>Spectral camera calibration, and profiles for polyester (disperse dyes) and wool.</li>
+    <li>Glimmer reading the dip photo itself, not just numbers.</li>
+    <li>Lab memory shared across dye houses that use the same dye lots, without sharing their recipes.</li>
+  </ul>
+  <p style="margin-top:28px"><button class="primary" id="caseToLab">Back to the lab</button> <a href="https://github.com/TusharTechs/rangrez" target="_blank" rel="noopener">Code, hardware and evaluation on GitHub</a></p>
+</div>
+
+<div id="tour" hidden><div class="tour-spot" id="tourSpot"></div><div class="tour-card" id="tourCard" role="dialog" aria-live="polite">
+  <div class="steps" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourText"></p>
+  <div class="row"><button class="small" id="tourSkip">Skip</button><span class="spacer"></span><button class="small" id="tourBack">Back</button><button class="primary small" id="tourNext">Next</button></div>
+</div></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let tolerance = 1.5, shots = [];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let tolerance = 1.5, shots = [], config = {}, samples = null;
+let handsFree = false, replaying = false, mic = null, targetFromPhoto = false, orderRead = false, liveRun = false;
 
-function labToHex([L, a, b]) {
-  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200, d = 6 / 29;
-  const f = (t) => (t > d ? t ** 3 : 3 * d * d * (t - 4 / 29));
-  const X = 0.95047 * f(fx), Y = f(fy), Z = 1.08883 * f(fz);
-  let r = 3.2404542 * X - 1.5371385 * Y - 0.4985314 * Z;
-  let g = -0.969266 * X + 1.8760108 * Y + 0.041556 * Z;
-  let bl = 0.0556434 * X - 0.2040259 * Y + 1.0572252 * Z;
-  const gam = (c) => Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)));
-  return "#" + [r, g, bl].map(gam).map((v) => v.toString(16).padStart(2, "0")).join("");
+// ---- Meta model chips ------------------------------------------------------------------
+const MODELS = [
+  ["sam", "SAM 3.1", "measures every photo"], ["wonder", "Muse Wonder", "runs the campaign"],
+  ["glimmer", "Muse Glimmer", "first-dip recipe (open weights)"], ["spark", "Muse Spark", "reads orders, drafts replies"],
+  ["image", "Muse Image", "garment preview"], ["voice", "Muse Voice", "hands-free, English and Hindi"],
+];
+const calls = {};
+$("models").innerHTML = MODELS.map(([k, n, job]) => `<span class="model" id="m-${k}" title="${esc(job)}"><i></i><b>${n}</b><span>${esc(job)}</span><span class="n" id="n-${k}"></span></span>`).join("");
+function modelKey(model) {
+  const m = model.toLowerCase();
+  return m.startsWith("sam") ? "sam" : m.includes("wonder") ? "wonder" : m.includes("glimmer") ? "glimmer" : m.includes("spark") ? "spark" : m.includes("image") ? "image" : m.includes("voice") ? "voice" : null;
+}
+function flash(model) {
+  const k = modelKey(model); if (!k) return;
+  calls[k] = (calls[k] || 0) + 1; $("n-" + k).textContent = `× ${calls[k]}`;
+  const el = $("m-" + k); el.classList.add("live"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("live"), 1400);
+}
+
+// ---- colour theme: the target colour dyes the page --------------------------------------
+function setDye(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  // Keep text readable: very light shades are darkened for accents.
+  const k = lum > 0.62 ? 0.62 / lum : 1;
+  document.documentElement.style.setProperty("--dye", `rgb(${Math.round(r * k)}, ${Math.round(g * k)}, ${Math.round(b * k)})`);
+  $("targetChip").style.background = hex;
+}
+
+// ---- the tape -----------------------------------------------------------------------------
+let targetHex = null;
+function drawTape() {
+  const segs = shots.map((s) => `<div class="seg ${s.delta_e <= tolerance ? "pass" : ""}" style="--c:${s.hex}"><div class="cloth"></div><small><span>dip ${s.index}</span><b>${isFinite(s.delta_e) ? s.delta_e.toFixed(2) : "—"}</b></small></div>`);
+  if (!shots.length) segs.push(`<div class="seg empty"><div class="cloth"></div><small><span>Undyed cotton: each dip becomes a segment of this tape, measured and corrected until it matches the target</span></small></div>`);
+  const target = targetHex ? `<span class="arrow">→</span><div class="seg target" style="--c:${targetHex}"><div class="cloth"></div><small><span>target</span><span>${targetHex}</span></small></div>` : "";
+  $("tape").innerHTML = segs.join("") + target;
+  $("tape").scrollLeft = 1e6;
+}
+
+// ---- gauge ----------------------------------------------------------------------------------
+function setGauge(de) {
+  const full = 326.7, frac = isFinite(de) ? Math.min(de, 12) / 12 : 0;
+  $("gaugeArc").style.strokeDashoffset = String(full * frac);
+  $("gaugeArc").style.stroke = isFinite(de) && de <= tolerance ? "var(--ok)" : "var(--dye)";
+  $("de").textContent = isFinite(de) ? de.toFixed(2) : "—";
+  $("gauge").classList.toggle("pass", isFinite(de) && de <= tolerance);
+  $("verdict").textContent = !isFinite(de) ? "Below the tolerance is a match." : de <= tolerance ? `Within the tolerance of ${tolerance.toFixed(1)}: a match.` : `Tolerance ${tolerance.toFixed(1)}: ${(de - tolerance).toFixed(2)} to go.`;
 }
 
 fetch("/api/config").then((r) => r.json()).then((c) => {
+  config = c;
   $("agent").textContent = "agent: " + c.agent;
-  $("rig").textContent = "rig: " + ({ sim: "simulator", serial: "hardware", assisted: "assisted (your hands)" }[c.rig] || c.rig);
+  $("rig").textContent = "rig: " + ({ sim: "simulator", serial: "robot rig", assisted: "assisted (your hands)" }[c.rig] || c.rig);
   $("dyeHead").textContent = c.dyes.join(" · ") + " " + c.unit;
   $("liveBox").hidden = !c.passcode;
-  if (c.public_reads_left > 0) $("photoNote").textContent = "Try it: photograph any outfit and get its colour, plus a recipe to dye it at home.";
+  if (c.public_reads_left > 0) $("photoNote").textContent = "Try it: photograph any outfit (under Your own photo) and get its colour, plus a recipe to dye it at home.";
 });
+fetch("/api/samples").then((r) => r.json()).then((s) => { samples = s; if (s.order) $("orderMsg").placeholder = s.order; if (!s.runs.length) $("replayBtn").hidden = true; }).catch(() => {});
+
+// Preset shades a dye house is often asked for.
+const PRESETS = [["#3d7a89", "teal"], ["#b5546f", "rose"], ["#c9a227", "mustard"], ["#4a4f8c", "indigo"], ["#6d7a3c", "olive"]];
+$("presets").innerHTML = PRESETS.map(([h, n]) => `<button style="background:${h}" title="${n}" aria-label="${n}" data-hex="${h}"></button>`).join("");
+$("presets").onclick = (ev) => {
+  const h = ev.target.dataset && ev.target.dataset.hex; if (!h) return;
+  $("picker").value = h; setDye(h); targetHex = h; drawTape(); targetFromPhoto = false;
+  [...$("presets").children].forEach((b) => b.setAttribute("aria-pressed", b.dataset.hex === h));
+};
 
 function setStatus(s) {
-  const el = $("status");
-  el.textContent = s;
-  el.className = "pill " + s;
+  const el = $("status"); el.textContent = s.replace(/_/g, " "); el.className = "pill " + s;
   $("start").disabled = s === "running" || s === "waiting";
 }
-
 function feed(id, html) {
   const box = $(id);
   if (box.firstElementChild && box.firstElementChild.classList.contains("muted") && box.children.length === 1) box.innerHTML = "";
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  box.prepend(div);
+  const div = document.createElement("div"); div.innerHTML = html; box.prepend(div);
 }
-const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
 async function drawLearning() {
   const m = await fetch("/api/memory").then((r) => r.json()).catch(() => null);
   if (!m) return;
   const cs = m.campaigns, svg = $("learning"), w = 340, h = 150, pad = 26;
-  if (!cs.length) { svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" fill="#9a968f" font-size="11" text-anchor="middle">No campaigns remembered yet</text>`; return; }
-  const n = Math.max(cs.length, 2), bw = (w - pad - 8) / n;
-  const maxD = Math.max(4, ...cs.map((c) => c.dips)), maxE = 12;
+  if (!cs.length) { svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" fill="#7a7166" font-size="11" text-anchor="middle">No campaigns remembered yet: run one</text>`; return; }
+  const n = Math.max(cs.length, 2), bw = (w - pad - 8) / n, maxD = Math.max(4, ...cs.map((c) => c.dips)), maxE = 12;
   let g = "";
   cs.forEach((c, i) => {
     const bh = (c.dips / maxD) * (h - pad - 14);
-    g += `<rect x="${pad + i * bw + 1}" y="${h - pad - bh}" width="${Math.max(2, bw - 2)}" height="${bh}" fill="${c.status === "matched" ? "#3fb97f" : "#6b6862"}" opacity="0.55"/>`;
+    g += `<rect x="${pad + i * bw + 1}" y="${h - pad - bh}" width="${Math.max(2, bw - 2)}" height="${bh}" rx="2" fill="${c.status === "matched" ? "#2d7a52" : "#b9ae9e"}" opacity="0.45"/>`;
   });
   const pts = cs.map((c, i) => c.first_de00 == null ? null : [pad + i * bw + bw / 2, h - pad - (Math.min(c.first_de00, maxE) / maxE) * (h - pad - 14)]).filter(Boolean);
-  if (pts.length > 1) g += `<polyline fill="none" stroke="#e8a33d" stroke-width="2" points="${pts.map((p) => p.join(",")).join(" ")}"/>`;
-  g += `<text x="${pad}" y="12" fill="#3fb97f" font-size="10">bars: dips to finish</text><text x="${w - 8}" y="12" fill="#e8a33d" font-size="10" text-anchor="end">line: first dip's ΔE00</text>`;
-  g += `<text x="${pad - 4}" y="${h - pad + 4}" fill="#9a968f" font-size="10" text-anchor="end">0</text><text x="${w / 2}" y="${h - 8}" fill="#9a968f" font-size="10" text-anchor="middle">campaign ${cs.length > 1 ? "1 → " + cs.length : "1"}</text>`;
+  if (pts.length > 1) g += `<polyline fill="none" stroke="var(--dye)" stroke-width="2.5" points="${pts.map((p) => p.join(",")).join(" ")}"/>`;
+  g += `<text x="${pad}" y="12" fill="#2d7a52" font-size="10">bars: dips to finish</text><text x="${w - 8}" y="12" fill="var(--dye)" font-size="10" text-anchor="end">line: first dip's ΔE00</text>`;
+  g += `<text x="${w / 2}" y="${h - 8}" fill="#7a7166" font-size="10" text-anchor="middle">campaign ${cs.length > 1 ? "1 → " + cs.length : "1"}</text>`;
   svg.innerHTML = g;
   $("learningNote").textContent = `${m.dips} dips remembered from ${cs.length} campaigns with this dye lot.`;
 }
 drawLearning();
 
 function drawChart() {
-  const svg = $("chart"), w = 340, h = 170, pad = 28;
+  const svg = $("chart"), w = 340, h = 160, pad = 28;
   const max = Math.max(8, ...shots.map((s) => s.delta_e || 0));
   const x = (i) => pad + (i / Math.max(1, Math.max(5, shots.length) - 1)) * (w - pad - 10);
   const y = (v) => h - pad + 4 - (Math.min(v, max) / max) * (h - pad - 14);
-  let g = `<line x1="${pad}" y1="${y(tolerance)}" x2="${w - 10}" y2="${y(tolerance)}" stroke="#3fb97f" stroke-dasharray="4 4"/>`;
-  g += `<text x="${w - 12}" y="${y(tolerance) - 5}" fill="#3fb97f" font-size="10" text-anchor="end">pass ${tolerance}</text>`;
-  g += `<text x="${pad - 6}" y="${y(max) + 4}" fill="#9a968f" font-size="10" text-anchor="end">${max.toFixed(0)}</text>`;
-  g += `<text x="${pad - 6}" y="${y(0) + 4}" fill="#9a968f" font-size="10" text-anchor="end">0</text>`;
+  let g = `<line x1="${pad}" y1="${y(tolerance)}" x2="${w - 10}" y2="${y(tolerance)}" stroke="#2d7a52" stroke-dasharray="4 4"/>`;
+  g += `<text x="${w - 12}" y="${y(tolerance) - 5}" fill="#2d7a52" font-size="10" text-anchor="end">pass ${tolerance}</text>`;
+  g += `<text x="${pad - 6}" y="${y(max) + 4}" fill="#7a7166" font-size="10" text-anchor="end">${max.toFixed(0)}</text><text x="${pad - 6}" y="${y(0) + 4}" fill="#7a7166" font-size="10" text-anchor="end">0</text>`;
   const pts = shots.map((s, i) => [x(i), y(s.delta_e)]);
-  if (pts.length > 1) g += `<polyline fill="none" stroke="#e8a33d" stroke-width="2" points="${pts.map((p) => p.join(",")).join(" ")}"/>`;
+  if (pts.length > 1) g += `<polyline fill="none" stroke="var(--dye)" stroke-width="2.5" points="${pts.map((p) => p.join(",")).join(" ")}"/>`;
   shots.forEach((s, i) => {
-    g += `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="5" fill="${s.hex}" stroke="#eceae6" stroke-width="1.5"/>`;
-    g += `<text x="${pts[i][0]}" y="${h - 8}" fill="#9a968f" font-size="10" text-anchor="middle">${i + 1}</text>`;
+    g += `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="6" fill="${s.hex}" stroke="#fffcf6" stroke-width="2"/>`;
+    g += `<text x="${pts[i][0]}" y="${h - 8}" fill="#7a7166" font-size="10" text-anchor="middle">${i + 1}</text>`;
   });
+  if (!shots.length) g += `<text x="${w / 2}" y="${h / 2}" fill="#7a7166" font-size="11" text-anchor="middle">The error falls with each dip</text>`;
   svg.innerHTML = g;
+}
+
+function resetView() {
+  shots = []; liveRun = false;
+  for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
+  for (const id of ["outcome", "assist", "frame", "replyText", "previewImg", "previewBtn", "replyBtn", "replayBanner"]) $(id).hidden = true;
+  $("cameraEmpty").hidden = false; $("frameCaption").textContent = ""; $("previewNote").textContent = ""; $("replyNote").textContent = "";
+  Object.keys(calls).forEach((k) => { calls[k] = 0; $("n-" + k).textContent = ""; });
+  drawChart(); drawTape(); setGauge(NaN);
 }
 
 const es = new EventSource("/api/events");
 es.onmessage = (msg) => {
   const e = JSON.parse(msg.data);
   if (e.kind === "replayed") { replaying = false; return; }
-  if (e.kind === "reset") {  // the server replays this campaign from the start
-    replaying = true;
-    shots = [];
-    for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
-    $("reportLink").hidden = true; $("previewBtn").hidden = true; $("replyBtn").hidden = true; $("replyText").hidden = true; $("previewImg").hidden = true; $("previewNote").textContent = "";
-    $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
-  } else if (e.kind === "start") {
+  if (e.kind === "reset") { replaying = true; resetView(); setStatus("idle"); return; }
+  if (e.kind === "start") {
+    resetView(); liveRun = !e.replay;
     $("agent").textContent = "agent: " + e.agent;
     $("memory").textContent = `lab memory: ${e.memory_dips || 0} dips · ${e.memory_campaigns || 0} campaigns`;
-    shots = []; tolerance = e.tolerance;
-    $("shots").innerHTML = ""; $("notebook").innerHTML = ""; drawChart();
-    $("targetChip").style.background = e.target_hex;
-    $("targetLabel").textContent = `target ${e.target_hex} · L*a*b* ${e.target_lab.map((v) => v.toFixed(1)).join(", ")}`;
-    $("dipChip").style.background = "transparent"; $("dipLabel").textContent = "no dip yet";
-    $("de").textContent = "—"; $("deBox").classList.remove("pass");
-    setStatus("running");
+    tolerance = e.tolerance; targetHex = e.target_hex; setDye(e.target_hex);
+    $("targetLabel").textContent = `target ${e.target_hex}`; $("dipChip").style.background = "transparent"; $("dipLabel").textContent = "no dip yet";
+    if (e.replay) { $("replayBanner").hidden = false; $("replayBanner").textContent = `Replaying a recorded live run${e.recorded ? " from " + e.recorded : ""}: every Meta API call shown here happened for real (sped up).`; }
+    drawTape(); drawChart(); setGauge(NaN); setStatus("running");
   } else if (e.kind === "assist") {
     if (handsFree && !replaying) say(instructions(e));
-    $("assist").hidden = false;
-    $("assistTitle").textContent = `Your turn: dip ${e.index}`;
+    $("assist").hidden = false; $("assistTitle").textContent = `Your turn: dip ${e.index}`;
     $("amounts").innerHTML = Object.entries(e.amounts).map(([d, v]) => `<div class="amount"><b>${v}</b><small>${e.unit} ${esc(d)}</small></div>`).join("");
     $("assistSteps").innerHTML = e.steps.map((s) => `<li>${esc(s)}</li>`).join("");
-    $("assistNote").textContent = "";
-    $("assistPhoto").value = "";
-    setStatus("waiting");
+    $("assistNote").textContent = ""; $("assistPhoto").value = ""; setStatus("waiting");
   } else if (e.kind === "shot") {
     $("assist").hidden = true;
     if ($("status").textContent === "waiting") setStatus("running");
-    shots.push(e); drawChart();
-    $("dipChip").style.background = e.hex;
-    $("dipLabel").textContent = `dip ${e.index} · ${e.hex}`;
-    $("de").textContent = isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "—";
-    $("deBox").classList.toggle("pass", e.delta_e <= tolerance);
-    $("deNote").textContent = e.delta_e <= tolerance ? "CIEDE2000 · matched" : "CIEDE2000";
-    $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`; $("frame").hidden = false;
-    const rec = e.recipe.match(/[\d.]+(?= (g\/L|%))/g) || [];
+    shots.push(e); drawChart(); drawTape(); setGauge(e.delta_e);
+    $("dipChip").style.background = e.hex; $("dipLabel").textContent = `dip ${e.index} · ${e.hex}`;
+    $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`; $("frame").hidden = false; $("cameraEmpty").hidden = true;
+    $("frameCaption").textContent = `Dip ${e.index}: measured ${e.hex}, ΔE00 ${isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "rejected"}.` + (e.flags && e.flags.length ? " " + e.flags.map((f) => f.replace(/^(NOTE|WARN): /, "")).join(" · ") : "");
+    const rec = e.recipe.match(/[\d.]+(?= (g\/L|%|drops))/g) || [];
     $("shots").insertAdjacentHTML("beforeend", `<tr><td>${e.index}</td><td><span class="sw" style="background:${e.hex}"></span>${rec.join(" · ")}</td><td>${isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "rejected"}</td></tr>`);
     if (e.flags && e.flags.length) feed("notebook", `<span class="gate">${esc(e.flags.join("; "))}</span>`);
   } else if (e.kind === "note") {
@@ -301,52 +556,111 @@ es.onmessage = (msg) => {
   } else if (e.kind === "tool") {
     feed("notebook", `<span class="tool">→ ${esc(e.name)}</span> <span class="muted">${esc(JSON.stringify(e.args)).slice(0, 160)}</span>`);
   } else if (e.kind === "gate") {
-    feed("notebook", `<span class="gate">gate refused: ${esc(e.refused)}</span> <span class="muted">${esc(e.recipe)}</span>`);
+    feed("notebook", `<span class="gate">safety gate refused: ${esc(e.refused)}</span> <span class="muted">${esc(e.recipe)}</span>`);
   } else if (e.kind === "dispense") {
     feed("notebook", `<span class="muted">dispensing dip ${e.index}: ${esc(e.recipe)}</span>`);
   } else if (e.kind === "model") {
     feed("notebook", `<span class="tool">model refit</span> <span class="muted">uptake ${esc(JSON.stringify(e.gains_after))}, fit error ${e.model_fit_error_de00}</span>`);
   } else if (e.kind === "status") {
     setStatus(e.status);
-    if (!["running", "waiting"].includes(e.status) && !replaying) setTimeout(drawLearning, 500);
-    $("reportLink").hidden = ["running", "waiting"].includes(e.status) || !shots.length;
-    $("previewBtn").hidden = $("reportLink").hidden || !targetFromPhoto;
-    $("replyBtn").hidden = $("reportLink").hidden || !orderRead;
-    if (!["running", "waiting"].includes(e.status)) $("assist").hidden = true;
+    const done = !["running", "waiting"].includes(e.status);
+    if (done && !replaying) setTimeout(drawLearning, 500);
+    if (done) { $("assist").hidden = true; showOutcome(e); }
     if (e.reason) feed("notebook", `<span class="gate">${esc(e.status)}: ${esc(e.reason)}</span>`);
   } else if (e.kind === "api") {
+    flash(e.model);
     feed("api", `<span><span class="m">${esc(e.model)}</span> ${esc(e.purpose)}</span><span class="${e.ok ? "" : "gate"}">${e.seconds}s</span>`);
   }
 };
 
-$("picker").addEventListener("input", (ev) => { $("targetChip").style.background = ev.target.value; });
-$("targetChip").style.background = $("picker").value;
+function showOutcome(e) {
+  if (!shots.length) return;
+  // A match is confirmed by a second photo; the status event carries the confirmed reading.
+  const confirmed = shots.find((s) => s.index === e.shot);
+  if (confirmed && isFinite(e.delta_e)) { confirmed.delta_e = e.delta_e; drawTape(); setGauge(e.delta_e); }
+  const best = shots.filter((s) => isFinite(s.delta_e)).sort((a, b) => a.delta_e - b.delta_e)[0];
+  const titles = { matched: "Matched on cotton", out_of_gamut: "Out of these dyes' reach", escalated: "Handed to a human", finished: "Budget spent", stopped: "Stopped" };
+  $("outcome").hidden = false;
+  $("outcome").style.borderColor = e.status === "matched" ? "var(--ok)" : "var(--warn)";
+  $("outcomeTitle").textContent = titles[e.status] || e.status;
+  $("outcomeTitle").style.color = e.status === "matched" ? "var(--ok)" : "var(--warn)";
+  $("outcomeText").textContent = best ? `Best: dip ${best.index}, ΔE00 ${best.delta_e.toFixed(2)} against a tolerance of ${tolerance.toFixed(1)}, after ${shots.length} dip${shots.length > 1 ? "s" : ""}. The report is ready for the buyer.` : "";
+  $("previewBtn").hidden = !(liveRun && targetFromPhoto);
+  $("replyBtn").hidden = !(liveRun && orderRead);
+  if (!liveRun) {  // a recorded run: show what else it produced
+    fetch("/api/preview.jpg").then((r) => { if (r.ok) { $("previewImg").src = "/api/preview.jpg"; $("previewImg").hidden = false; $("previewNote").textContent = "The customer's garment in the approved shade: Muse Image recoloured it, SAM 3.1 checked it."; } });
+    fetch("/api/replay-file/order.json").then((r) => r.ok ? r.json() : null).then((j) => {
+      if (!j) return;
+      const o = j.order;
+      $("orderNote").textContent = `Muse Spark read the buyer's message: ${o.quantity} ${o.quantity_unit} of ${o.garment}, ${o.fabric}, by ${o.deadline}; shade ${o.shade_strictness}, so pass at ΔE00 ≤ ${o.tolerance_de00}.`;
+      $("orderMsg").value = j.message;
+      $("outcomeText").textContent += ` The buyer's order: ${o.quantity} ${o.garment}s, shade ${o.shade_strictness}.`;
+    }).catch(() => {});
+    fetch("/api/replay-file/reply.txt").then((r) => r.ok ? r.text() : null).then((t) => {
+      if (!t) return;
+      $("replyText").value = t; $("replyText").hidden = false;
+      $("replyNote").textContent = "The reply Muse Spark drafted, in the buyer's own Hinglish. Rangrez never sends messages itself.";
+    }).catch(() => {});
+  }
+}
 
+$("picker").addEventListener("input", (ev) => { setDye(ev.target.value); targetHex = ev.target.value; drawTape(); targetFromPhoto = false; });
+
+function showHomeRecipe(h) {
+  if (!h) return;
+  const drops = Object.entries(h.drops).filter(([, n]) => n > 0).map(([d, n]) => `${n} drop${n === 1 ? "" : "s"} ${esc(d)}`).join(" · ");
+  $("homeRecipe").hidden = false;
+  $("homeRecipe").innerHTML = h.reachable
+    ? `<b>Dye it at home:</b> ${drops || "plain water"} in ${h.teaspoons} teaspoons of water. A first-dip estimate for household colours; brands vary, so dip a white cotton strip and let Rangrez correct it.`
+    : `<b>At home:</b> household blue, red and yellow can't quite reach this shade. Closest: ${drops} <span class="sw" style="background:${h.closest_hex}"></span>${h.closest_hex}.`;
+}
+function showRead(j, note) {
+  $("picker").value = j.hex; setDye(j.hex); targetHex = j.hex; drawTape(); targetFromPhoto = true;
+  showHomeRecipe(j.home_recipe);
+  $("photoNote").textContent = note || {
+    card: `SAM 3.1 read the ${j.concept || "garment"} as ${j.hex}, calibrated against the colour card.`,
+    paper: `SAM 3.1 read ${j.hex}, balanced against the white paper. Photograph every dip in the same spot and light.`,
+    none: `Read ${j.hex}, uncalibrated: put white paper or the colour card in the shot.`,
+  }[j.calibration];
+}
+function showPhoto(src, caption) {
+  $("frame").src = src; $("frame").hidden = false; $("cameraEmpty").hidden = true; $("frameCaption").textContent = caption;
+}
+
+async function readPhoto(blob, name) {
+  const form = new FormData();
+  form.append("photo", blob, name); form.append("concept", $("concept").value || "fabric"); form.append("passcode", $("passcode").value);
+  $("photoNote").textContent = "SAM 3.1 is finding the garment and the colour card…";
+  const r = await fetch("/api/target-from-photo", { method: "POST", body: form });
+  const j = await r.json();
+  if (!r.ok) return { error: j.detail || "Could not read the photo." };
+  showRead(j); return j;
+}
 $("usePhoto").onclick = async () => {
   const file = $("photo").files[0];
   if (!file) { $("photoNote").textContent = "Choose a photo first."; return; }
-  const form = new FormData();
-  form.append("photo", file); form.append("concept", $("concept").value || "fabric"); form.append("passcode", $("passcode").value);
-  $("photoNote").textContent = "Segmenting…";
-  const r = await fetch("/api/target-from-photo", { method: "POST", body: form });
-  const j = await r.json();
-  if (!r.ok) { $("photoNote").textContent = j.detail || "Could not read the photo."; return; }
-  $("picker").value = j.hex; $("targetChip").style.background = j.hex; targetFromPhoto = true;
-  const h = j.home_recipe;
-  if (h) {
-    const drops = Object.entries(h.drops).filter(([, n]) => n > 0).map(([d, n]) => `${n} drop${n === 1 ? "" : "s"} ${esc(d)}`).join(" · ");
-    $("homeRecipe").hidden = false;
-    $("homeRecipe").innerHTML = h.reachable
-      ? `<b>Dye it at home:</b> ${drops || "plain water"} in ${h.teaspoons} teaspoons of water. A first-dip estimate for household colours; brands vary, so dip a white cotton strip and let Rangrez correct it.`
-      : `<b>At home:</b> household blue, red and yellow can't quite reach this shade. Closest: ${drops} <span class="sw" style="background:${h.closest_hex}"></span>${h.closest_hex}.`;
-  }
-  $("photoNote").textContent = {
-    card: `Calibrated against the colour card: ${j.hex}`,
-    paper: `Balanced against the white paper: ${j.hex}. Photograph every dip in the same spot and light.`,
-    none: `Read ${j.hex} from the photo, uncalibrated: put white paper or the colour card in the shot.`,
-  }[j.calibration];
+  showPhoto(URL.createObjectURL(file), "The customer's photo.");
+  const j = await readPhoto(file, file.name);
+  if (j.error) $("photoNote").textContent = j.error;
 };
-
+// The sample: read it live if the Meta models are available, else show how live SAM read it earlier.
+$("sampleBtn").onclick = async () => {
+  if (!samples) return;
+  $("concept").value = samples.concept;
+  showPhoto(samples.photo, "A customer's kurta photographed on white paper with the printed colour card.");
+  const live = config.online || $("passcode").value;
+  if (live) {
+    const blob = await fetch(samples.photo).then((r) => r.blob());
+    const j = await readPhoto(blob, "kurta.jpg");
+    if (!j.error) return;
+  }
+  if (samples.read) showRead(samples.read, `Live SAM 3.1 read this kurta earlier as ${samples.read.hex}, calibrated against the colour card. Press Start the lab.`);
+};
+$("replayBtn").onclick = async () => {
+  if (!samples || !samples.runs.length) return;
+  const r = await fetch(`/api/replay/${encodeURIComponent(samples.runs[samples.runs.length - 1].name)}`, { method: "POST" });
+  if (!r.ok) { const j = await r.json(); $("photoNote").textContent = j.detail || "Could not replay."; }
+};
 $("start").onclick = async () => {
   const r = await fetch("/api/campaign", {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -362,14 +676,11 @@ async function sendAssist(url, body) {
 $("sendPhoto").onclick = () => {
   const file = $("assistPhoto").files[0];
   if (!file) { $("assistNote").textContent = "Take or choose a photo first."; return; }
-  const form = new FormData(); form.append("photo", file);
-  sendAssist("/api/assist/photo", form);
+  const form = new FormData(); form.append("photo", file); sendAssist("/api/assist/photo", form);
 };
 $("useWebcam").onclick = () => sendAssist("/api/assist/webcam");
 $("stop").onclick = () => fetch("/api/stop", { method: "POST" });
 
-// -- hands-free: Muse Voice Transcribe hears the dyer; the browser reads instructions aloud ----------
-let handsFree = false, replaying = false, mic = null, targetFromPhoto = false, orderRead = false;
 $("replyBtn").onclick = async () => {
   const form = new FormData(); form.append("passcode", $("passcode").value);
   $("replyNote").textContent = "Muse Spark is drafting the reply in the buyer's language…";
@@ -380,8 +691,9 @@ $("replyBtn").onclick = async () => {
   $("replyNote").textContent = "A draft: check it, then send it with the lab-dip report. Rangrez never sends messages itself.";
 };
 $("readOrder").onclick = async () => {
-  const msg = $("orderMsg").value.trim();
+  const msg = $("orderMsg").value.trim() || (samples && samples.order) || "";
   if (!msg) { $("orderNote").textContent = "Paste the buyer's message first."; return; }
+  $("orderMsg").value = msg;
   const form = new FormData(); form.append("message", msg); form.append("passcode", $("passcode").value);
   $("orderNote").textContent = "Muse Spark is reading the order…";
   const r = await fetch("/api/order", { method: "POST", body: form });
@@ -398,8 +710,10 @@ $("previewBtn").onclick = async () => {
   const j = await r.json();
   if (!r.ok) { $("previewNote").textContent = j.detail || "Preview failed."; return; }
   $("previewImg").src = `/api/preview.jpg?t=${Date.now()}`; $("previewImg").hidden = false;
-  $("previewNote").textContent = `Dip ${j.dip}'s shade on the customer's garment. Muse Image's first attempt was ΔE00 ${j.raw_de00} off; measured and corrected, it is now ${j.de00}. For the eye: the dip is the evidence.`;
+  $("previewNote").textContent = `Dip ${j.dip}'s shade on the customer's garment. Muse Image's first attempt measured ΔE00 ${j.raw_de00} from the dip, so Rangrez corrected it: a picture for the eye, the dip is the evidence.`;
 };
+
+// ---- hands-free: Muse Voice Transcribe hears the dyer; the browser reads instructions aloud ----
 const DYE_HI = { blue: "नीला", red: "लाल", yellow: "पीला", turquoise: "फ़िरोज़ी", fuchsia: "रानी", "lemon yellow": "नींबू पीला" };
 function instructions(e) {
   const parts = Object.entries(e.amounts).filter(([, v]) => +v > 0);
@@ -410,13 +724,11 @@ function instructions(e) {
 function say(text) {
   if (!("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = $("lang").value === "hi" ? "hi-IN" : "en-IN";
-  speechSynthesis.speak(u);
+  const u = new SpeechSynthesisUtterance(text); u.lang = $("lang").value === "hi" ? "hi-IN" : "en-IN"; speechSynthesis.speak(u);
 }
-function wav16k(samples, rate) {
-  const ratio = rate / 16000, n = Math.floor(samples.length / ratio), pcm = new Int16Array(n);
-  for (let i = 0; i < n; i++) pcm[i] = Math.max(-1, Math.min(1, samples[Math.floor(i * ratio)])) * 0x7fff;
+function wav16k(samplesIn, rate) {
+  const ratio = rate / 16000, n = Math.floor(samplesIn.length / ratio), pcm = new Int16Array(n);
+  for (let i = 0; i < n; i++) pcm[i] = Math.max(-1, Math.min(1, samplesIn[Math.floor(i * ratio)])) * 0x7fff;
   const buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
   const str = (o, t) => [...t].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
   str(0, "RIFF"); v.setUint32(4, 36 + pcm.length * 2, true); str(8, "WAVEfmt "); v.setUint32(16, 16, true);
@@ -467,7 +779,89 @@ $("handsFree").onclick = async () => {
     catch (err) { handsFree = false; $("handsFree").textContent = "Hands-free voice: off"; $("voiceNote").textContent = "Microphone unavailable: " + err.message; }
   } else if (mic) { mic.stream.getTracks().forEach((t) => t.stop()); mic.ctx.close(); mic = null; }
 };
-drawChart();
+
+// ---- tabs ----------------------------------------------------------------------------------
+function showTab(name) {
+  $("labView").hidden = name !== "lab"; $("caseView").hidden = name !== "case";
+  $("tapeWrap").hidden = name !== "lab";
+  $("tabLab").setAttribute("aria-selected", name === "lab"); $("tabCase").setAttribute("aria-selected", name === "case");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+$("tabLab").onclick = () => showTab("lab"); $("tabCase").onclick = () => showTab("case"); $("caseToLab").onclick = () => showTab("lab");
+
+// ---- the guided tour: shows the whole project, and has the judge run it ---------------------
+const TOUR = [
+  { title: "Welcome to Rangrez", text: "A dye house's lab dip, in minutes instead of days, from a phone. In two minutes you'll run the lab yourself: match a kurta, watch it dye and correct, and get the buyer's report." },
+  { el: "models", title: "Six Meta models, six jobs", text: "SAM 3.1 measures, Muse Wonder runs the lab, Muse Glimmer proposes the first dip, Muse Spark reads orders, Muse Image previews, Muse Voice listens. Each lights up the moment it's called." },
+  { el: "startCard", title: "Start from the customer's garment", text: "A buyer sends a photo of the kurta to match. Rangrez finds the garment and the printed colour card with SAM 3.1 and turns pixels into a calibrated colour.", action: () => $("sampleBtn").click() },
+  { el: "cameraCard", title: "SAM 3.1 as a measuring instrument", text: "The colour card corrects the camera; the white paper evens out uneven light. The kurta's colour is now the target, and the page takes on its shade." },
+  { el: "tapeWrap", title: "Now the lab runs", text: "We'll replay a recorded live run, sped up: every Wonder decision and SAM measurement in it happened for real. Watch each dip become a segment of this cotton tape.", action: () => $("replayBtn").click() },
+  { el: "gaugeCard", title: "Closer with every dip", text: "CIEDE2000 is the colour difference the eye sees. Below the tolerance (green) is a match; on a robot rig a second photo must agree before Rangrez calls it." },
+  { el: "logCard", title: "Muse Wonder, the colourist", text: "Wonder chooses each dip with tools: the dye model, the lab's memory, a correction learned from real dips. It never touches a pump: a safety gate checks every recipe, and it hands over to a human when stuck.", action: () => { $("logDetails").open = true; } },
+  { el: "learningCard", title: "It learns this dye lot", text: "Every dip is remembered. Over a 40-campaign night shift, the first dip's error fell from 3.81 to 1.40 ΔE00. Glimmer, fine-tuned on the lab's records, proposes first dips too." },
+  { el: "outcome", title: "The buyer's lab-dip report", text: "When it matches: a report the buyer already asks for: ΔE00 and CMC 2:1, options A/B/C, the recipe in % on weight of fabric, the production plan, and the garment previewed in the shade.", wait: true },
+  { el: "advanced", title: "Hands-free, in Hindi too", text: "The dyer's gloves are wet with dye: say \"done\" or \"हो गया\", \"repeat\" or \"फिर से\". Paste the buyer's WhatsApp order and Muse Spark reads it and drafts the reply.", action: () => { $("advanced").open = true; } },
+  { el: "tabCase", title: "The case", text: "What only Rangrez does, what it has shown, where it honestly stands (simulated, not yet dyed for real), and how a dye house would adopt it." },
+  { title: "Your turn", text: "Pick a preset shade or your own colour and press Start the lab. Or open “Your own photo” and photograph your outfit: Rangrez gives you a recipe to dye a matching cloth at home." },
+];
+let tourAt = 0;
+function placeTour() {
+  const step = TOUR[tourAt], spot = $("tourSpot"), card = $("tourCard");
+  $("tourStep").textContent = `${tourAt + 1} of ${TOUR.length}`; $("tourTitle").textContent = step.title; $("tourText").textContent = step.text;
+  $("tourBack").disabled = tourAt === 0; $("tourNext").textContent = tourAt === TOUR.length - 1 ? "Start exploring" : "Next";
+  const el = step.el && $(step.el);
+  if (el && !el.hidden) {
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    followSpot();
+  } else {
+    Object.assign(spot.style, { left: innerWidth / 2 + "px", top: innerHeight / 2 + "px", width: "0px", height: "0px" });
+    card.style.left = (innerWidth - card.offsetWidth) / 2 + "px"; card.style.top = innerHeight * 0.3 + "px";
+  }
+}
+// Keep the spotlight on its element while the page scrolls into place (and afterwards).
+function followSpot() {
+  const step = TOUR[tourAt], el = step && step.el && $(step.el);
+  if ($("tour").hidden || !el || el.hidden) return;
+  const r = el.getBoundingClientRect(), pad = 8, spot = $("tourSpot"), card = $("tourCard");
+  Object.assign(spot.style, { left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + 2 * pad + "px", height: r.height + 2 * pad + "px" });
+  const below = r.bottom + 16 + card.offsetHeight < innerHeight;
+  const above = r.top - card.offsetHeight - 16 > 0;
+  card.style.left = Math.max(16, Math.min(innerWidth - card.offsetWidth - 16, r.left)) + "px";
+  card.style.top = (below ? r.bottom + 16 : above ? r.top - card.offsetHeight - 16 : 16) + "px";
+}
+addEventListener("scroll", followSpot, { passive: true });
+
+function tourGo(i) {
+  if (i >= TOUR.length) return endTour();
+  tourAt = Math.max(0, i);
+  const step = TOUR[tourAt];
+  if (step.el === "tabCase" || step.el === "models") showTab(step.el === "tabCase" ? "case" : "lab"); else if (step.el) showTab("lab");
+  if (step.action) step.action();
+  if (step.wait && $(step.el).hidden) {  // wait for the replay to finish, then point at the report
+    $("tourText").textContent = "The lab is still dyeing… the report appears when it's done.";
+    const t = setInterval(() => { if (!$(step.el).hidden || $("tour").hidden) { clearInterval(t); placeTour(); } }, 500);
+  }
+  placeTour();
+}
+function endTour() { $("tour").hidden = true; showTab("lab"); try { localStorage.setItem("rangrez-tour", "done"); } catch (e) {} }
+$("tourBtn").onclick = () => { $("tour").hidden = false; tourGo(0); };
+$("tourNext").onclick = () => tourGo(tourAt + 1);
+$("tourBack").onclick = () => tourGo(tourAt - 1);
+$("tourSkip").onclick = endTour;
+addEventListener("resize", () => { if (!$("tour").hidden) placeTour(); });
+addEventListener("keydown", (ev) => { if ($("tour").hidden) return; if (ev.key === "Escape") endTour(); if (ev.key === "ArrowRight") tourGo(tourAt + 1); if (ev.key === "ArrowLeft") tourGo(tourAt - 1); });
+// Shareable links: ?replay=1 plays the recorded live run, ?tour=1 opens the tour.
+const params = new URLSearchParams(location.search);
+if (params.has("replay")) {
+  const go = () => samples ? ($("sampleBtn").click(), setTimeout(() => $("replayBtn").click(), 500)) : setTimeout(go, 200);
+  go();
+} else if (params.has("tour")) {
+  setTimeout(() => { $("tour").hidden = false; tourGo(0); }, 600);
+} else {
+  try { if (!localStorage.getItem("rangrez-tour")) setTimeout(() => { $("tour").hidden = false; tourGo(0); }, 900); } catch (e) {}
+}
+
+setDye($("picker").value); drawChart(); drawTape(); setGauge(NaN);
 </script>
 </body>
 </html>

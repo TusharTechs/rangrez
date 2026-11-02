@@ -1,0 +1,22 @@
+{
+  "lab": [
+    57.64,
+    -15.84,
+    -12.65
+  ],
+  "hex": "#5893a0",
+  "calibration": "card",
+  "concept": "kurta",
+  "home_recipe": {
+    "drops": {
+      "blue": 22,
+      "red": 1,
+      "yellow": 8
+    },
+    "water_ml": 20,
+    "teaspoons": 4,
+    "predicted_de00": 0.3,
+    "reachable": true,
+    "closest_hex": "#59939f"
+  }
+}
