@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(".env")
 from openai import OpenAI
 from PIL import Image
+from rangrez.photoreal import SCENE_DIR
 
 client = OpenAI(base_url="https://api.meta.ai/v1", api_key=os.environ["MODEL_API_KEY"], timeout=240)
 COMMON = ("Realistic unedited smartphone photo, {view}, of a narrow strip of plain undyed white cotton handkerchief fabric, "
@@ -32,6 +33,9 @@ SCENES = {
 CUSTOM = {
     "no_paper": "Realistic unedited smartphone photo, top-down, of a narrow strip of plain undyed white cotton handkerchief fabric, about 3 cm wide and 12 cm long, "
                 "with frayed edges and visible weave, lying directly on a medium brown wooden table. No paper. Lit by a warm room light. No text, no hands, no other objects.",
+    "light_box": "Realistic unedited photo from a fixed webcam looking straight down inside a small homemade white light box lit by LED strips, "
+                 "of a strip of plain undyed white cotton tape about 2.5 cm wide running across a white printer paper sheet, the tape coming in from the left edge "
+                 "and leaving at the right edge of the frame. Slightly cool LED light, a soft vignette in the corners. No text, no hands, no other objects.",
     "kurta_target": "Realistic unedited smartphone photo, top-down, of a plain undyed off-white cotton kurta folded neatly on a white A4 printer paper sheet, "
                     "the paper on a bed with a plain sheet. Lit by daylight from a window. No text, no hands, no other objects.",
 }
@@ -43,7 +47,7 @@ def make(name):
     raw = base64.b64decode(d.b64_json)
     img = Image.open(io.BytesIO(raw)).convert("RGB")
     img.thumbnail((1600, 1600))
-    img.save(f"eval/scenes/{name}.jpg", quality=92)
+    img.save(SCENE_DIR / f"{name}.jpg", quality=92)
     return name, round(time.time() - t, 1)
 
 names = sys.argv[1:] or [*SCENES, *CUSTOM]

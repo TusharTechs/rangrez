@@ -124,7 +124,7 @@
     </section>
     <section>
       <h2>Camera — SAM 3.1 masks: card (yellow), strip (cyan)</h2>
-      <img id="frame" alt="Latest camera frame from the rig with segmentation boxes">
+      <img id="frame" hidden alt="Latest camera frame from the rig with segmentation boxes">
     </section>
   </div>
 
@@ -202,7 +202,11 @@ function drawChart() {
 const es = new EventSource("/api/events");
 es.onmessage = (msg) => {
   const e = JSON.parse(msg.data);
-  if (e.kind === "start") {
+  if (e.kind === "reset") {  // the server replays this campaign from the start
+    shots = [];
+    for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
+    $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
+  } else if (e.kind === "start") {
     shots = []; tolerance = e.tolerance;
     $("shots").innerHTML = ""; $("notebook").innerHTML = ""; drawChart();
     $("targetChip").style.background = e.target_hex;
@@ -227,7 +231,7 @@ es.onmessage = (msg) => {
     $("de").textContent = isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "—";
     $("deBox").classList.toggle("pass", e.delta_e <= tolerance);
     $("deNote").textContent = e.delta_e <= tolerance ? "CIEDE2000 · matched" : "CIEDE2000";
-    $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`;
+    $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`; $("frame").hidden = false;
     const rec = e.recipe.match(/[\d.]+(?= (g\/L|%))/g) || [];
     $("shots").insertAdjacentHTML("beforeend", `<tr><td>${e.index}</td><td><span class="sw" style="background:${e.hex}"></span>${rec.join(" · ")}</td><td>${isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "rejected"}</td></tr>`);
     if (e.flags && e.flags.length) feed("notebook", `<span class="gate">${esc(e.flags.join("; "))}</span>`);

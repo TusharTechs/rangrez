@@ -15,5 +15,6 @@ build/
 
 # Local run artefacts
 runs/
+recordings/
 captures/
 *.log

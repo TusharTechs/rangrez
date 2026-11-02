@@ -21,7 +21,7 @@ About ₹8,000 (≈ $100) of parts on top of a phone or webcam. Prices are typic
 | Cold fibre-reactive dyes: turquoise, fuchsia, lemon yellow | 3 | 1,500 | Procion MX or local reactive equivalents |
 | Soda ash (sodium carbonate) | 500 g | 100 | Fixer, applied to the tape before use |
 | Printed colour card (`uv run rangrez-card`) | 1 | 50 | Or an X-Rite ColorChecker for absolute accuracy |
-| Normally-closed e-stop button | 1 | 100 | Wired to GPIO 34 |
+| Normally-closed e-stop button + 10 kΩ resistor | 1 | 100 | Wired to GPIO 34 with an external pull-up |
 | Cardboard or foam-board light box | 1 | — | Matte grey inside |
 
 ## Layout
@@ -52,7 +52,7 @@ About ₹8,000 (≈ $100) of parts on top of a phone or webcam. Prices are typic
 | 25 | LED panel |
 | 26 | Cup-lift servo |
 | 27, 14, 12, 13 | Stepper IN1-IN4 |
-| 34 | E-stop (normally closed to GND) |
+| 34 | E-stop (normally closed to GND), plus a 10 kΩ pull-up from GPIO 34 to 3.3 V. GPIO 34 has no internal pull-up; without the resistor the e-stop input floats |
 
 ## Chemistry
 

@@ -17,7 +17,9 @@ const int DRYER_PIN = 23;                        // 12 V blower relay
 const int LIGHT_PIN = 25;                        // LED panel MOSFET
 const int DIP_SERVO_PIN = 26;                    // lifts the cup up to the tape
 const int STEP_PINS[4] = {27, 14, 12, 13};       // 28BYJ-48 via ULN2003
-const int ESTOP_PIN = 34;                        // normally-closed button to GND (input only)
+const int ESTOP_PIN = 34;                        // normally-closed button to GND + external 10k pull-up to 3.3 V
+                                                 // (GPIO 34 is input-only with no internal pull-up); a pressed
+                                                 // button or a broken wire reads HIGH and stops the rig
 
 // ---- limits (also enforced on the host) ---------------------------------
 const float MAX_PUMP_ML = 20.0;      // per command
@@ -65,10 +67,12 @@ bool waitMs(unsigned long ms) {
   return true;
 }
 
-void runFor(int pin, float seconds) {
+// False if the e-stop cut it short.
+bool runFor(int pin, float seconds) {
   digitalWrite(pin, HIGH);
-  waitMs((unsigned long)(seconds * 1000));
+  bool ok = waitMs((unsigned long)(seconds * 1000));
   digitalWrite(pin, LOW);
+  return ok;
 }
 
 void setup() {
@@ -77,6 +81,7 @@ void setup() {
   pinMode(STIR_PIN, OUTPUT); pinMode(DRYER_PIN, OUTPUT); pinMode(LIGHT_PIN, OUTPUT);
   pinMode(ESTOP_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(ESTOP_PIN), onEstop, RISING);
+  if (digitalRead(ESTOP_PIN) == HIGH) estop = true;  // pressed or unplugged at power-up: stay stopped
   dipServo.attach(DIP_SERVO_PIN);
   tape.setMaxSpeed(600); tape.setAcceleration(400);
   allOff();
@@ -100,16 +105,18 @@ void loop() {
     if (id < 0 || id > 3) return reply(cmd, "pump id must be 0-3 (use drain for 4)");
     if (ml <= 0 || ml > MAX_PUMP_ML) return reply(cmd, "ml out of range");
     if (bathMl + ml > MAX_BATH_ML) return reply(cmd, "cup would overflow");
-    runFor(PUMP_PINS[id], ml * msPerMl[id] / 1000.0);
-    bathMl += ml; reply(cmd);
+    bool ok = runFor(PUMP_PINS[id], ml * msPerMl[id] / 1000.0);
+    bathMl += ml;  // worst case, for the overflow check
+    ok ? reply(cmd) : reply(cmd, "e-stop during pump");
   } else if (!strcmp(cmd, "drain")) {
     float s = doc["seconds"] | 0.0;
     if (s <= 0 || s > MAX_DRAIN_S) return reply(cmd, "drain seconds out of range");
-    runFor(PUMP_PINS[4], s); bathMl = 0; reply(cmd);
+    if (!runFor(PUMP_PINS[4], s)) return reply(cmd, "e-stop during drain");
+    bathMl = 0; reply(cmd);
   } else if (!strcmp(cmd, "stir")) {
     float s = doc["seconds"] | 0.0;
     if (s <= 0 || s > MAX_STIR_S) return reply(cmd, "stir seconds out of range");
-    runFor(STIR_PIN, s); reply(cmd);
+    runFor(STIR_PIN, s) ? reply(cmd) : reply(cmd, "e-stop during stir");
   } else if (!strcmp(cmd, "dip")) {
     float s = doc["seconds"] | 0.0;
     if (s < 10 || s > MAX_DIP_S) return reply(cmd, "dip seconds out of range");
@@ -130,7 +137,7 @@ void loop() {
   } else if (!strcmp(cmd, "dry")) {
     float s = doc["seconds"] | 0.0;
     if (s <= 0 || s > MAX_DRY_S) return reply(cmd, "dry seconds out of range");
-    runFor(DRYER_PIN, s); reply(cmd);
+    runFor(DRYER_PIN, s) ? reply(cmd) : reply(cmd, "e-stop during dry");
   } else if (!strcmp(cmd, "light")) {
     digitalWrite(LIGHT_PIN, (doc["on"] | false) ? HIGH : LOW); reply(cmd);
   } else if (!strcmp(cmd, "calibrate")) {

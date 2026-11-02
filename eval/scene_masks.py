@@ -8,7 +8,7 @@ load_dotenv(".env")
 import numpy as np
 from PIL import Image
 from rangrez.photoreal import SCENE_DIR
-from rangrez.vision import MuseSamSegmenter, _on_paper
+from rangrez.vision import MuseSamSegmenter, _cloth_in_view, _find_paper
 
 sam = MuseSamSegmenter()
 
@@ -21,18 +21,17 @@ names = sys.argv[1:] or sorted(os.path.basename(p)[:-4] for p in glob.glob(f"{SC
 for name in names:
     jpeg = open(f"{SCENE_DIR}/{name}.jpg", "rb").read()
     img = Image.open(io.BytesIO(jpeg)).convert("RGB")
-    papers = sam.segment(img, jpeg, "white paper") or sam.segment(img, jpeg, "white rectangle")
-    paper = max(papers, key=lambda i: i.mask.sum()) if papers else None
+    paper = _find_paper(img, jpeg, sam)  # exactly what the pipeline would find
     if name.endswith("_target"):  # a garment photographed on its own: the whole cloth is the target
         prompts = ("kurta", "shirt", "garment", "fabric")
     else:
-        prompts = ("fabric", "cloth", "white cloth strip", "fabric strip")
+        prompts = ("fabric", "cloth", "cotton tape", "white cloth strip", "fabric strip")
     cloth, background = [], []
     for p in prompts:
         found = sam.segment(img, jpeg, p)
         # SAM also returns a bedsheet or tablecloth under the paper: keep it, tests must cope with it.
-        background = [c for c in found if not _on_paper(c, paper)]
-        cloth = [c for c in found if c not in background]
+        cloth = _cloth_in_view(found, paper)  # the pipeline's own rule
+        background = [c for c in found if all(c is not k for k in cloth)]
         if cloth:
             break
     if background:

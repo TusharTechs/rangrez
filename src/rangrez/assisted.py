@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from PIL import Image, ImageOps
 
+from .camera import grab
+from .camera import source as camera_source
 from .profiles import PROFILE
 from .rig import DYES, UNIT, Inventory, PumpPlan, Recipe, RigLimits, ShotResult, now
 
@@ -28,12 +30,15 @@ class Cancelled(RuntimeError):
 
 
 def normalise_photo(data: bytes) -> bytes:
-    """Any phone photo -> upright JPEG no larger than MAX_SIDE_PX."""
+    """Any phone photo (JPEG, PNG, iPhone HEIC) -> upright RGB JPEG no larger than MAX_SIDE_PX."""
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
     try:
         img = Image.open(io.BytesIO(data))
         img = ImageOps.exif_transpose(img).convert("RGB")
     except Exception as exc:
-        raise ValueError("could not read that image; please send a JPEG or PNG") from exc
+        raise ValueError("could not read that image; please send a JPEG, PNG or HEIC photo") from exc
     img.thumbnail((MAX_SIDE_PX, MAX_SIDE_PX))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=93)
@@ -46,7 +51,7 @@ class AssistedRig:
     inventory: Inventory = field(default_factory=Inventory)
     on_instructions: Callable[[dict], None] = lambda _: None
     timeout_s: float = 45 * 60
-    camera_index: int = 0
+    camera: int | str = field(default_factory=camera_source)
 
     def __post_init__(self) -> None:
         self._photo: bytes | None = None
@@ -78,6 +83,7 @@ class AssistedRig:
                 f"Dip a fresh white cotton strip for {int(recipe.dip_seconds)} seconds.",
                 "Squeeze it gently and dry it fully with the hair dryer (about 2 minutes).",
                 "Lay it on a sheet of white paper (or next to the colour card) in the same spot and light as before, and send the photo.",
+                "If you have the customer's cloth, lay it beside the strip: Rangrez then compares them side by side under the same light.",
             ],
         }
 
@@ -118,16 +124,4 @@ class AssistedRig:
         self._ready.set()
 
     def capture(self) -> bytes:
-        import cv2
-
-        cam = cv2.VideoCapture(self.camera_index)
-        try:
-            for _ in range(10):
-                cam.read()
-            ok, frame = cam.read()
-            if not ok:
-                raise RuntimeError("webcam returned no frame")
-            ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 94])
-            return jpeg.tobytes()
-        finally:
-            cam.release()
+        return grab(self.camera)

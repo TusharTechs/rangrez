@@ -24,6 +24,7 @@ from .agent import WONDER_MODEL, run_deterministic, run_with_wonder
 from .campaign import Campaign
 from .colour import hex_to_lab, lab_to_hex
 from .photoreal import scene_names
+from .recorder import Recorder
 from .rig import DYES, UNIT
 from .sim import VirtualRig
 from .vision import CallLog, MuseSamSegmenter, target_from_photo
@@ -40,8 +41,12 @@ class Lab:
     def __init__(self) -> None:
         self.log = CallLog()
         self.subscribers: list[queue.Queue] = []
+        self.history: list[dict] = []  # this campaign's events, replayed to pages that join late
+        self.lock = threading.Lock()
+        self.since = time.time()
         self.campaign: Campaign | None = None
         self.thread: threading.Thread | None = None
+        self.rec = Recorder()
         self.log.listeners.append(lambda call: self.publish({
             "kind": "api", "model": call.model, "purpose": call.purpose,
             "seconds": round(call.seconds, 2), "ok": call.ok, "detail": call.detail, "at": time.time(),
@@ -60,12 +65,17 @@ class Lab:
 
             return AssistedRig(
                 on_instructions=lambda w: self.publish({"kind": "assist", **w, "at": time.time()}),
-                camera_index=int(os.environ.get("RANGREZ_CAMERA", "0")),
             )
         if kind == "serial":
             from .serial_rig import SerialRig
 
-            return SerialRig(os.environ["RANGREZ_PORT"])
+            port = os.environ["RANGREZ_PORT"]
+            if port == "virtual":  # the firmware's protocol and limits, emulated: no parts needed
+                from .esp32_emulator import start
+
+                board, port = start(time_scale=float(os.environ.get("RANGREZ_TIME_SCALE", "0.02")))
+                return SerialRig(port, camera=board.camera_path, boot_seconds=0.1)
+            return SerialRig(port)
         # A different realistic scene and paper each campaign; the colour card in view.
         seed = int(time.time()) % 10_000
         scene = os.environ.get("RANGREZ_SCENE") or scene_names()[seed % len(scene_names())]
@@ -80,14 +90,47 @@ class Lab:
 
     def publish(self, event: dict) -> None:
         event = _json_safe(event)
-        for q in list(self.subscribers):
-            q.put(event)
+        with self.lock:
+            self.history.append(event)
+            for q in list(self.subscribers):
+                q.put(event)
+        if self.campaign is None:
+            return
+        self.rec.event(event)
+        if event.get("kind") == "shot" and self.campaign.shots:
+            s = self.campaign.shots[-1]
+            self.rec.save(f"dip{s.index:02d}_photo.jpg", s.image_jpeg)
+            self.rec.save(f"dip{s.index:02d}_sam.jpg", s.overlay_jpeg)
+        if event.get("kind") == "status" and event.get("status") not in ("running", "waiting"):
+            self.rec.save("state.json", self.campaign.state())
+
+    def subscribe(self) -> queue.Queue:
+        """A new page (a reload, the phone joining) first gets the campaign so far."""
+        q: queue.Queue = queue.Queue()
+        with self.lock:
+            q.put({"kind": "reset"})
+            for event in self.history:
+                q.put(event)
+            self.subscribers.append(q)
+        return q
 
     def start(self, target_lab: np.ndarray, tolerance: float) -> None:
         if self.thread and self.thread.is_alive():
             raise HTTPException(409, "a campaign is already running")
+        with self.lock:  # keep only the API calls made since the last start (e.g. reading the target photo)
+            self.history = [e for e in self.history if e.get("kind") == "api" and e.get("at", 0) >= self.since]
+            self.since = time.time()
         rig = self.make_rig(None)
         c = Campaign(target_lab, rig, self.make_segmenter(rig), tolerance=tolerance)
+        self.rec.begin(type(rig).__name__, {
+            "rig": type(rig).__name__, "scene": getattr(rig, "scene", None), "dyes": DYES, "unit": UNIT,
+            "agent": WONDER_MODEL if self.online else "offline policy", "tolerance": tolerance,
+            "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),
+            "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        # The API calls that read the target photo belong to this run too.
+        for e in self.history:
+            self.rec.event(e)
         c.listeners.append(self.publish)
         self.campaign = c
         self.publish({"kind": "start", "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),
@@ -170,10 +213,15 @@ async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabri
     try:
         from .assisted import normalise_photo
 
-        lab, calibration = target_from_photo(normalise_photo(jpeg), concept, LAB.make_segmenter())
+        photo = normalise_photo(jpeg)
+        lab, calibration = target_from_photo(photo, concept, LAB.make_segmenter())
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc))
-    return {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration}
+    result = {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration, "concept": concept}
+    LAB.rec.pending = []  # only the latest target photo goes with the next campaign
+    LAB.rec.stash("target.jpg", photo)
+    LAB.rec.stash("target.json", result)
+    return result
 
 
 @app.post("/api/assist/photo")
@@ -229,8 +277,7 @@ def shot_image(index: int, raw: bool = False) -> Response:
 
 @app.get("/api/events")
 async def events() -> StreamingResponse:
-    q: queue.Queue = queue.Queue()
-    LAB.subscribers.append(q)
+    q = LAB.subscribe()
 
     async def stream():
         try:

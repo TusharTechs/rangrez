@@ -44,6 +44,7 @@ class VirtualRig:
     scene: str = "lamp_desk"
     card: bool = True  # printed colour card in the photo; else white paper only
     card_overlap: bool = False  # card laid partly over the strip
+    printed_card: bool = False  # card printed at home: patches a few dE00 off the reference
     pump_cv: float = 0.02
 
     def __post_init__(self) -> None:
@@ -85,6 +86,7 @@ class VirtualRig:
         jpeg, masks = render(
             Scene.load(self.scene), self.last_swatch_lab, target_lab=self.target_lab, card=self.card,
             seed=self.seed * 1000 + self.photos, paper_seed=self.seed, overlap=self.card_overlap,
+            printed_card=self.printed_card,
         )
         self.masks.clear()
         self.masks.update(masks)  # in place: segmenters handed out earlier see the latest photo

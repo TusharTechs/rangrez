@@ -38,10 +38,35 @@ def scene_names(kind: str = "strip") -> list[str]:
 
 
 @cache
-def _card_lin() -> np.ndarray:
+def _card_lin(printed: bool = False) -> np.ndarray:
     from .make_card import render as card_image  # the same card people print
 
-    return srgb_to_linear(np.asarray(card_image(), dtype=float) / 255)
+    lin = srgb_to_linear(np.asarray(card_image(), dtype=float) / 255)
+    return _home_print(lin) if printed else lin
+
+
+def _home_print(lin: np.ndarray) -> np.ndarray:
+    """What a home inkjet on plain paper makes of the card: the printer can't reach saturated
+    colours, blacks print as dark grey, and every patch is a few dE00 off its reference."""
+    from .card import COLS, PATCH_SRGB_8BIT, ROWS
+    from .colour import lab_to_srgb as to_srgb
+    from .colour import srgb_to_lab
+
+    rng = np.random.default_rng(7)
+    out = lin.copy()
+    flat = out.reshape(-1, 3)
+    for ref in PATCH_SRGB_8BIT:
+        lab = srgb_to_lab(ref / 255.0)
+        L, a, b = lab
+        c = np.hypot(a, b)
+        squash = 0.8 if c > 45 else 0.92  # out-of-gamut colours compress
+        printed = np.array([max(L, 18.0) * 0.97 + 2.0, a * squash, b * squash]) + rng.normal(0, 1.2, 3)
+        sel = np.all(np.abs(flat - srgb_to_linear(ref / 255.0)) < 1e-6, axis=1)
+        flat[sel] = srgb_to_linear(np.clip(to_srgb(printed), 0, 1))
+    body = np.all(flat < 0.01, axis=1)
+    flat[body] = srgb_to_linear(np.full(3, 0.12))  # black body prints as dark grey
+    assert ROWS * COLS == len(PATCH_SRGB_8BIT)
+    return out
 
 
 def _mask(name: str, kind: str) -> np.ndarray | None:
@@ -92,10 +117,12 @@ class Scene:
 
     @cached_property
     def illumination(self) -> np.ndarray:
-        """Relative light across the frame (1 = median over the paper), smoothed from the bare paper.
+        """Relative light across the frame (1 = median over the paper), read off the bare paper.
 
-        This is how the scene was lit: lamp falloff, window light, flash hotspot.
-        Cast shadows beside the cloth are left out so they do not darken the cloth itself.
+        This is how the scene was lit: lamp falloff, window light, flash hotspot, shadows.
+        Where paper is visible the light is the paper's own (lightly smoothed) brightness.
+        Under the cloth it is filled in from the lit paper around it, leaving out cast
+        shadows beside the cloth so they do not darken the cloth itself.
         """
         h, w = self.lin.shape[:2]
         if self.paper is None:
@@ -105,8 +132,12 @@ class Scene:
         for _ in range(2):
             num = gaussian_filter(small * weight[..., None], (25, 25, 0))
             den = gaussian_filter(weight, 25)[..., None]
-            field = num / np.maximum(den, 1e-9)
-            weight = bare * (small.mean(axis=2) > 0.8 * field.mean(axis=2))  # drop shadows, refit
+            under = num / np.maximum(den, 1e-9)
+            weight = bare * (small.mean(axis=2) > 0.8 * under.mean(axis=2))  # drop shadows, refit
+        den = gaussian_filter(bare, 3)
+        seen = gaussian_filter(small * bare[..., None], (3, 3, 0)) / np.maximum(den, 1e-9)[..., None]
+        trust = np.clip(den / 0.6, 0, 1)[..., None]
+        field = trust * seen + (1 - trust) * under
         field /= np.median(field[bare > 0], axis=0)
         return cv2.resize(field.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR).astype(float)
 
@@ -137,7 +168,8 @@ def _card_box(name: str, overlap: bool) -> tuple[int, int, int, int]:
 
 
 def render(scene: Scene, strip_lab=None, target_lab=None, card: bool = False, seed: int = 0,
-           paper_seed: int | None = None, overlap: bool = False) -> tuple[bytes, dict[str, np.ndarray]]:
+           paper_seed: int | None = None, overlap: bool = False, printed_card: bool = False,
+           ) -> tuple[bytes, dict[str, np.ndarray]]:
     """One phone photo and the masks of what is in it. Same paper_seed: same sheet of paper.
 
     strip_lab=None leaves the strip undyed. Returns the JPEG and {"strip", "target",
@@ -167,7 +199,7 @@ def render(scene: Scene, strip_lab=None, target_lab=None, card: bool = False, se
         masks["background"] = scene.background
     if card:
         l, t, r, b = scene.card_box(overlap)
-        img = Image.fromarray((linear_to_srgb(_card_lin()) * 255).astype(np.uint8)).resize((r - l, b - t))
+        img = Image.fromarray((linear_to_srgb(_card_lin(printed_card)) * 255).astype(np.uint8)).resize((r - l, b - t))
         # The card is lit by the light where it lies, like everything else in the scene.
         card_lin = srgb_to_linear(np.asarray(img, dtype=float) / 255)
         lin[t:b, l:r] = card_lin * light * scene.illumination[t:b, l:r]
@@ -197,4 +229,12 @@ class SceneSegmenter:
             kinds = ["target"]
         else:  # "fabric", "cloth", "kurta"...: SAM returns every piece of cloth, bedsheet included
             kinds = ["strip", "target", "background"]
-        return [_instance(self.masks[k]) for k in kinds if k in self.masks]
+        size = (image.height, image.width)
+        out = []
+        for k in kinds:
+            if k in self.masks:
+                m = self.masks[k]
+                if m.shape != size:  # e.g. a video codec trimmed a row
+                    m = cv2.resize(m.astype(np.uint8), size[::-1], interpolation=cv2.INTER_NEAREST) > 0
+                out.append(_instance(m))
+        return out

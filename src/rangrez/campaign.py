@@ -19,6 +19,8 @@ from .profiles import PROFILE
 from .rig import DYES, UNIT, GateError, Recipe, Rig, check_recipe, execute
 from .vision import Measurement, Segmenter, measure, overlay
 
+SIDE_BY_SIDE_MAX_DE00 = 12.0  # a cloth further than this from the target is not the customer's
+
 
 @dataclass
 class Shot:
@@ -44,6 +46,7 @@ class Campaign:
     notebook: list[dict] = field(default_factory=list)
     listeners: list = field(default_factory=list)
     status: str = "running"
+    side_readings: list = field(default_factory=list)  # the customer's cloth, read beside each strip
 
     # -- events ------------------------------------------------------------
     def emit(self, kind: str, **data) -> None:
@@ -151,7 +154,9 @@ class Campaign:
             return {"refused": str(exc)}
         self.emit("dispense", recipe=recipe.describe(), index=len(self.shots) + 1, rationale=rationale)
         result = execute(self.rig, recipe)
-        m = measure(result.image_jpeg, self.segmenter, seed=len(self.shots))
+        m = measure(result.image_jpeg, self.segmenter, with_target=True, seed=len(self.shots))
+        if m.ok and m.target_lab is not None:
+            self._side_by_side(m)
         de = float(delta_e_2000(m.lab, self.target_lab)) if m.ok else float("nan")
         shot = Shot(len(self.shots) + 1, recipe, m, de, rationale, result.image_jpeg, overlay(result.image_jpeg, m))
         self.shots.append(shot)
@@ -161,6 +166,29 @@ class Campaign:
             self.status = "matched"
             self.emit("status", status=self.status, shot=shot.index, delta_e=de)
         return self._shot_summary(shot) | {"matched": m.ok and de <= self.tolerance}
+
+    def _side_by_side(self, m) -> None:
+        """The customer's cloth lies beside the strip: compare them under the same light.
+
+        A target read from a photo taken elsewhere carries that photo's light and camera
+        error; the cloth in the dip photo shares the strip's. Re-anchor to the running mean
+        of those side-by-side readings, unless the "cloth" is clearly something else.
+        """
+        seen = np.asarray(m.target_lab, dtype=float)
+        if float(delta_e_2000(seen, self.target_lab if not self.side_readings else np.mean(self.side_readings, axis=0))) > SIDE_BY_SIDE_MAX_DE00:
+            m.flags.append("WARN: another cloth is in the photo but it is not the target colour; ignored it")
+            return
+        first = not self.side_readings
+        self.side_readings.append(seen)
+        before = self.target_lab
+        self.target_lab = np.mean(self.side_readings, axis=0)
+        m.flags.append("NOTE: compared side by side with the customer's cloth in the same photo")
+        if first:
+            self.note(f"The customer's cloth is in the photo, so I compare the strip with it under the same light. "
+                      f"Target re-read as {lab_to_hex(self.target_lab)} (was {lab_to_hex(before)}, "
+                      f"dE00 {float(delta_e_2000(before, self.target_lab)):.1f} apart).", who="agent")
+            for s in self.shots:  # earlier dips are judged against the better target too
+                s.delta_e = float(delta_e_2000(s.measurement.lab, self.target_lab)) if s.measurement.ok else float("nan")
 
     def declare_out_of_gamut(self) -> dict:
         best = self.best
@@ -182,8 +210,9 @@ class Campaign:
 
     # -- numerics ----------------------------------------------------------------
     def _jac(self, conc: np.ndarray) -> np.ndarray:
-        # Sensitivity from the model refitted to every real dip. Updating it dip-to-dip
-        # (Broyden) chases measurement noise when steps are small, e.g. whole drops.
+        # Sensitivity from the model refitted to every real dip. Learning it from the dips
+        # themselves (Broyden, or ridge regression on nearby dips) chases measurement noise
+        # when steps are whole drops: tried, and it matched fewer shades.
         return self._model_jacobian(conc)
 
     def _model_jacobian(self, conc: np.ndarray) -> np.ndarray:

@@ -19,6 +19,7 @@ from typing import Protocol
 import cv2
 import numpy as np
 from PIL import Image
+from scipy.ndimage import gaussian_filter
 
 from .card import COLS, ROWS, reference_linear
 from .colour import (
@@ -35,7 +36,7 @@ BASE_URL = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 CARD_PROMPT = "color checker card"
 STRIP_PROMPT = "fabric strip"
 TARGET_PROMPT = "fabric swatch"
-STRIP_PROMPTS = ("fabric", "cloth", STRIP_PROMPT, "cotton tape", "rectangle")
+STRIP_PROMPTS = ("fabric", "cloth", STRIP_PROMPT, "cotton tape", "strip", "rectangle")
 PAPER_PROMPT = "white paper"
 PAPER_PROMPTS = (PAPER_PROMPT, "sheet of paper", "white rectangle")
 _paper_prompt_order = list(PAPER_PROMPTS)
@@ -253,13 +254,20 @@ def _white_balance(lin: np.ndarray, paper: Instance | None, fabrics: list[Instan
     return M, ["WARN: white-paper balance, no colour card. Absolute colour may be off by up to ~5 dE00, but dips and target shot on the same paper under the same light compare fairly"]
 
 
+def _instance_of(mask: np.ndarray) -> Instance:
+    ys, xs = np.nonzero(mask)
+    return Instance(mask, (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+
+
 def _find_paper(img: Image.Image, jpeg: bytes, segmenter: Segmenter) -> Instance | None:
     for prompt in list(_paper_prompt_order):
         papers = segmenter.segment(img, jpeg, prompt)
         if papers:
             _paper_prompt_order.remove(prompt)
             _paper_prompt_order.insert(0, prompt)
-            return max(papers, key=lambda i: i.mask.sum())
+            # A strip lying across the sheet splits it in two: join the big pieces.
+            biggest = max(p.mask.sum() for p in papers)
+            return _instance_of(np.any([p.mask for p in papers if p.mask.sum() >= 0.3 * biggest], axis=0))
     return None
 
 
@@ -290,6 +298,9 @@ def _bare_paper(paper: Instance, objects: list[Instance], card_zone: np.ndarray 
     if card_zone is not None:
         bare &= ~card_zone
     return _erode(bare, 6)
+
+
+LOCAL_LIGHT_PX = 48  # how far the paper's local brightness is trusted around a point
 
 
 def _flat_field(lin: np.ndarray, bare: np.ndarray) -> tuple[np.ndarray, list[str]]:
@@ -323,8 +334,18 @@ def _flat_field(lin: np.ndarray, bare: np.ndarray) -> tuple[np.ndarray, list[str
     # Beyond the paper there is no evidence: hold the edge value instead of extrapolating a cubic.
     gy = np.clip(gy, ys.min(), ys.max()).astype(float)
     gx = np.clip(gx, xs.min(), xs.max()).astype(float)
-    coarse = (basis(gy, gx) @ coef).astype(np.float32)
-    field = cv2.resize(coarse, (w, h), interpolation=cv2.INTER_LINEAR).astype(float)
+    coarse = basis(gy, gx) @ coef
+    # The global curve misses local light (corners, a lamp's edge). The paper right next to
+    # something is the best evidence of the light on it: add the smoothed local residual.
+    lin8, bare8 = lin[::8, ::8], bare[::8, ::8]
+    resid = np.log(np.maximum(lin8, 1e-4)) - coarse
+    grey = resid.mean(axis=2)
+    ok = bare8 & (grey > -3 * sd) & (grey < 3 * sd)  # lit paper only, not shadows or threads
+    if ok.sum() > 50:
+        den = gaussian_filter(ok.astype(float), LOCAL_LIGHT_PX / 8)
+        num = gaussian_filter(np.where(ok[..., None], resid, 0), (LOCAL_LIGHT_PX / 8, LOCAL_LIGHT_PX / 8, 0))
+        coarse = coarse + num / np.maximum(den, 1e-6)[..., None] * (den > 1e-4)[..., None]
+    field = cv2.resize(coarse.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR).astype(float)
     field -= np.median(field[bare], axis=0)
     gain = np.clip(np.exp(field), 0.4, 2.5)
     spread = float(np.exp(np.percentile(field[bare].mean(axis=1), 95) - np.percentile(field[bare].mean(axis=1), 5)))
@@ -368,19 +389,18 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
     def keep(f: Instance) -> bool:
         if card is not None and (f.mask & card.mask).sum() >= 0.5 * f.mask.sum():
             return False  # mostly card: it is the card
-        # The strip lies on the paper; drop only the paper itself.
-        return paper is None or f.mask.sum() < 0.6 * paper.mask.sum()
+        # The strip lies on the paper, so SAM's paper mask leaves it out; anything mostly inside
+        # that mask is the paper itself, or a piece of it (a strip across the sheet splits it).
+        return paper is None or (f.mask & paper.mask).sum() < 0.6 * f.mask.sum()
 
     def trim(f: Instance) -> Instance:
         if card_zone is None or not (f.mask & card_zone).any():
             return f
-        mask = f.mask & ~card_zone
-        ys, xs = np.nonzero(mask)
-        return Instance(mask, (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+        return _instance_of(f.mask & ~card_zone)
 
     fabrics: list[Instance] = []
     for prompt in list(_strip_prompt_order):  # cloth words first; shape words when the scene is plain
-        fabrics = [trim(f) for f in _cloth_in_view(segmenter.segment(img, jpeg, prompt), paper) if keep(f)]
+        fabrics = [trim(f) for f in _cloth_in_view([f for f in segmenter.segment(img, jpeg, prompt) if keep(f)], paper)]
         if fabrics:
             # The rig and lighting don't change between dips: try what worked first next time.
             _strip_prompt_order.remove(prompt)
@@ -402,16 +422,27 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
         M, f1 = _white_balance(lin, paper, fabrics)
         flags += f1
     # The test strip is the most elongated piece of cloth, lying either way.
-    strip = max(fabrics, key=lambda i: i.elongation)
+    strip = chosen = max(fabrics, key=lambda i: i.elongation)
+    if paper is not None and not _on_paper(strip, paper):
+        # Rig tape runs off the paper: measure the part over it, where the light is known.
+        l, t, r, b = paper.box
+        inside = np.zeros_like(strip.mask)
+        sl, st, sr, sb = strip.box
+        if sr - sl >= sb - st:  # clip along the tape's length only
+            inside[:, l:r] = True
+        else:
+            inside[t:b, :] = True
+        if (strip.mask & inside).sum() > 2000:
+            strip = _instance_of(strip.mask & inside)
     lab, lab_sd, n, f2 = _lab_of_region(lin, strip.mask, M, rng)
     flags += f2
 
     target_lab = None
     if with_target:
-        others = [f for f in fabrics if f is not strip]
+        others = [f for f in fabrics if f is not chosen]
         if not others:
             targets = segmenter.segment(img, jpeg, TARGET_PROMPT)
-            others = [trim(t) for t in _cloth_in_view(targets, paper) if not (t.mask & strip.mask).any() and keep(t)]
+            others = [trim(t) for t in _cloth_in_view([t for t in targets if keep(t)], paper) if not (t.mask & strip.mask).any()]
         if others:
             target = max(others, key=lambda i: i.mask.sum())
             target_lab, _, _, _ = _lab_of_region(lin, target.mask, M, rng)
