@@ -32,6 +32,7 @@ You control the lab only through tools. Rules:
 - Never invent a colour, concentration or measurement. Every number you state must come from a tool result.
 - Before every run_shot, call suggest_recipes. You may pick a candidate or blend candidates, but explain why.
 - After each shot with a usable measurement, call fit_model so the dye model learns this dye lot.
+- For the first dip, if a glimmer candidate is offered, use it: Glimmer learned this dye lot from the lab's own dips.
 - Far from the target, trust model_inverse. Once the best dip is within about dE00 6, prefer colourist_correction:
   the model always predicts a perfect match but cannot capture everything about this dye lot (saturation, lot strength),
   while the correction is learned from real dips.
@@ -158,7 +159,11 @@ def run_deterministic(c: Campaign, on_step: Callable[[], None] | None = None) ->
         # A colourist starts from the model, then corrects from real dips once close.
         near = c.best is not None and c.best.delta_e < CORRECTION_ZONE_DE00
         correction = [x for x in cands if x["method"] == "colourist_correction"]
-        pick = correction[0] if near and correction else min(cands, key=lambda x: x["predicted_delta_e00"])
+        first = [x for x in cands if x["method"] == "glimmer"]
+        if first:
+            pick = first[0]
+        else:
+            pick = correction[0] if near and correction else min(cands, key=lambda x: x["predicted_delta_e00"])
         dispatch(c, "write_note", {"text": f"Shot {len(c.shots) + 1}: {pick['method']} predicts dE00 {pick['predicted_delta_e00']}."})
         dispatch(c, "run_shot", {"recipe": pick["recipe"], "rationale": pick["why"]})
         if on_step:

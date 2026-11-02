@@ -32,6 +32,7 @@ target colour ──► Muse Wonder (lead colourist)
 | --- | --- |
 | **SAM 3.1** | Text-prompted segmentation of the 24-patch colour card and the dyed cotton in every frame. The pixels inside the masks become a calibrated colour measurement, so SAM works as a measuring instrument. It also reads the colour of a named object ("kurta") in a customer's photo |
 | **Muse Wonder** | Runs the campaign through tool calls: suggests recipes, refits the dye model, writes the lab notebook, decides when to stop or escalate |
+| **Muse Glimmer 30B** (open weights, fine-tuned) | Proposes each campaign's first dip. LoRA-tuned on Fireworks on the lab's own records (every recipe dipped and the colour SAM measured on the cloth), so it knows this dye lot and this camera. The weights are published |
 
 ### Engineering choices
 

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import glimmer
 from .colour import delta_e_2000, lab_to_hex
 from .km import DyeModel, fit_gains, solve_recipe
 from .profiles import PROFILE
@@ -113,6 +114,12 @@ class Campaign:
         cands = []
         conc, de = solve_recipe(self.model, self.target_lab, max_conc=self.rig.limits.max_conc_g_per_l)
         cands.append(("model_inverse", conc, de, "Invert the refitted Kubelka-Munk model."))
+        if not self.shots and glimmer.configured():
+            g = glimmer.first_guess(self.target_lab, log=getattr(self.segmenter, "log", None))
+            if g is not None:
+                d = float(delta_e_2000(self.model.predict_lab(g), self.target_lab))
+                cands.append(("glimmer", g, d, "Muse Glimmer fine-tuned on this lab's own dips: its first recipes "
+                              "land closer than the supplier model's (the predicted dE00 shown is the supplier model's opinion)."))
         best = self.best
         if best is not None:
             step = self._correction_step(best)

@@ -8,8 +8,10 @@ Training is supervised fine-tuning (LoRA) on Fireworks; the weights are publishe
     uv run python eval/glimmer.py data          # the lab's records -> eval/glimmer/{train,test}.jsonl
     uv run python eval/glimmer.py train         # upload, start the SFT job, wait
     uv run python eval/glimmer.py deploy        # on-demand deployment of the tuned model (billed hourly)
-    uv run python eval/glimmer.py eval          # first-dip error: supplier model, refitted model, Glimmer
+    uv run python eval/glimmer.py score <run>   # a Serverless Training run's base vs tuned answers, by the colour they dye
+    uv run python eval/glimmer.py eval          # same, live against a deployed Glimmer
     uv run python eval/glimmer.py download      # LoRA adapter -> eval/glimmer/adapter/
+    uv run --with huggingface_hub python eval/glimmer.py publish   # adapter + dip records -> Hugging Face (private)
     uv run python eval/glimmer.py undeploy      # delete the deployment (stop billing)
 """
 
@@ -29,40 +31,18 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).parent / "glimmer"
 load_dotenv(Path(__file__).parents[1] / ".env")
 
-from rangrez.colour import delta_e_2000, lab_to_hex  # noqa: E402
-from rangrez.km import fit_gains, solve_recipe  # noqa: E402
-from rangrez.photoreal import scene_names  # noqa: E402
-from rangrez.profiles import PROFILE  # noqa: E402
-from rangrez.rig import DYES, Recipe  # noqa: E402
-from rangrez.sim import VirtualRig  # noqa: E402
-from rangrez.vision import measure  # noqa: E402
+from rangrez.colour import delta_e_2000
+from rangrez.glimmer import SYSTEM, answer, first_guess, parse, prompt
+from rangrez.km import fit_gains, solve_recipe
+from rangrez.photoreal import scene_names
+from rangrez.profiles import PROFILE
+from rangrez.rig import Recipe
+from rangrez.sim import VirtualRig
+from rangrez.vision import measure
 
 BASE_MODEL = "accounts/fireworks/models/muse-glimmer-30b"
 API = "https://api.fireworks.ai/v1"
 JOB_ID = os.environ.get("GLIMMER_JOB", "rangrez-glimmer-v1")
-SYSTEM = (
-    f"You are Glimmer, the colourist of a small cotton dye lab. Dyes: {', '.join(DYES)} "
-    f"({PROFILE.description}). Given a target colour measured in CIELAB (D65), reply with only the "
-    f"recipe for the first dip as JSON with one key per dye, in {PROFILE.unit}, each between 0 and {PROFILE.max_conc:g}."
-)
-
-
-def prompt(lab) -> str:
-    L, a, b = (float(v) for v in lab)
-    return f"Target L* {L:.1f}, a* {a:.1f}, b* {b:.1f} ({lab_to_hex(np.array([L, a, b]))}). First dip recipe?"
-
-
-def answer(conc) -> str:
-    return json.dumps({d: round(float(c), 2) for d, c in zip(DYES, conc)})
-
-
-def parse(text: str) -> np.ndarray | None:
-    try:
-        start, end = text.index("{"), text.rindex("}") + 1
-        obj = json.loads(text[start:end])
-        return np.clip([float(obj.get(d, 0.0)) for d in DYES], 0, PROFILE.max_conc)
-    except (ValueError, json.JSONDecodeError, TypeError):
-        return None
 
 
 # -- the lab's records ---------------------------------------------------------------
@@ -91,12 +71,11 @@ def cmd_data(n_train: int = 3000, n_test: int = 200) -> None:
         dips = [d for d in pool.map(one_dip, range(n_train + n_test), chunksize=20) if d]
     train, test = dips[:n_train], dips[n_train:]
     with open(ROOT / "train.jsonl", "w") as f:
-        for d in train:
-            f.write(json.dumps({"messages": [
+        f.writelines(json.dumps({"messages": [
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": prompt(d["measured_lab"])},
                 {"role": "assistant", "content": answer(d["conc"])},
-            ]}) + "\n")
+            ]}) + "\n" for d in train)
     (ROOT / "records.json").write_text(json.dumps({"train": train, "test": test}))
     print(f"{len(train)} training dips, {len(test)} held-out targets -> {ROOT}")
 
@@ -124,7 +103,7 @@ def call(method: str, path: str, body: dict | None = None, data: bytes | None = 
 def cmd_train() -> None:
     acct = account()
     path = ROOT / "train.jsonl"
-    n = sum(1 for _ in open(path))
+    n = len(path.read_text().splitlines())
     ds = f"{JOB_ID}-data"
     existing = {d["name"].rsplit("/", 1)[-1] for d in call("GET", f"/accounts/{acct}/datasets?pageSize=200").get("datasets", [])}
     if ds not in existing:
@@ -185,15 +164,6 @@ def cmd_download() -> None:
 
 
 # -- does it help? ----------------------------------------------------------------------
-def glimmer_recipe(lab, model: str) -> np.ndarray | None:
-    from openai import OpenAI
-
-    client = OpenAI(base_url="https://api.fireworks.ai/inference/v1", api_key=os.environ["FIREWORKS_API_KEY"].strip())
-    r = client.chat.completions.create(model=model, temperature=0, max_tokens=200, messages=[
-        {"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt(lab)}])
-    return parse(r.choices[0].message.content or "")
-
-
 def cmd_eval() -> None:
     acct = account()
     recs = json.loads((ROOT / "records.json").read_text())
@@ -204,9 +174,9 @@ def cmd_eval() -> None:
     tuned = f"accounts/{acct}/models/{JOB_ID}#accounts/{acct}/deployments/{JOB_ID}"
     models = {"supplier model": lambda lab: solve_recipe(supplier, lab, PROFILE.max_conc)[0],
               "model refitted to the lab's dips": lambda lab: solve_recipe(refit, lab, PROFILE.max_conc)[0],
-              "Glimmer (fine-tuned)": lambda lab: glimmer_recipe(lab, tuned)}
+              "Glimmer (fine-tuned)": lambda lab: first_guess(lab, model=tuned)}
     if os.environ.get("BASE_GLIMMER"):
-        models["Glimmer (base, zero-shot)"] = lambda lab: glimmer_recipe(lab, BASE_MODEL)
+        models["Glimmer (base, zero-shot)"] = lambda lab: first_guess(lab, model=BASE_MODEL)
     results = {}
     for name, fn in models.items():
         errs, fails = [], 0
@@ -222,6 +192,89 @@ def cmd_eval() -> None:
     (ROOT / "eval.json").write_text(json.dumps(results, indent=2))
 
 
+def cmd_score() -> None:
+    """Score a Serverless Training run's base and tuned answers by the colour they really dye."""
+    run = Path(sys.argv[2])
+    recs = json.loads((ROOT / "records.json").read_text())
+    by_prompt = {prompt(d["measured_lab"]): d for d in recs["train"]}
+    holdout = [json.loads(line) for line in (run / "holdout.jsonl").read_text().splitlines()]
+    targets = [by_prompt[next(m["content"] for m in h["messages"] if m["role"] == "user")] for h in holdout]
+    held = {id(d) for d in targets}
+    world = VirtualRig()
+    supplier = PROFILE.nominal()
+    seen = [d for d in recs["train"] if id(d) not in held][:400]
+    refit = fit_gains(supplier, [(np.array(d["conc"]), np.array(d["measured_lab"])) for d in seen])
+
+    def score(recipes: list) -> dict:
+        errs = [float(delta_e_2000(world.true_swatch_lab(Recipe(tuple(c))), np.array(d["true_lab"])))
+                for c, d in zip(recipes, targets) if c is not None]
+        e = np.array(errs)
+        return {"median": round(float(np.median(e)), 2), "mean": round(float(e.mean()), 2), "p90": round(float(np.percentile(e, 90)), 2),
+                "under_3": round(float((e < 3).mean()), 2), "answered": len(errs), "n": len(targets)}
+
+    out = {
+        "supplier model (today's first dip)": score([solve_recipe(supplier, np.array(d["measured_lab"]), PROFILE.max_conc)[0] for d in targets]),
+        "model refitted to 400 of the lab's dips": score([solve_recipe(refit, np.array(d["measured_lab"]), PROFILE.max_conc)[0] for d in targets]),
+    }
+    for label in ("base", "tuned"):
+        preds = [json.loads(line) for line in (run / f"predictions_{label}.jsonl").read_text().splitlines()]
+        recipes = [None] * len(targets)
+        for p in preds:
+            recipes[p["index"]] = parse(p["answer_text"])
+        out[f"Muse Glimmer 30B, {label}"] = score(recipes)
+    for name, r in out.items():
+        print(f"{name:42s} first-dip dE00 median {r['median']:5.2f}  mean {r['mean']:5.2f}  p90 {r['p90']:5.2f}  "
+              f"under 3: {r['under_3']:.0%}  answered {r['answered']}/{r['n']}")
+    (ROOT / "eval.json").write_text(json.dumps(out, indent=2))
+
+
+def cmd_publish() -> None:
+    """Upload the adapter and the lab's dip records to Hugging Face (private; flip public at submission)."""
+    from huggingface_hub import HfApi
+
+    api = HfApi(token=os.environ["HF_TOKEN"].strip())
+    user = api.whoami()["name"]
+    adapter = ROOT / "adapter"
+    if not any(adapter.glob("*")):
+        sys.exit("no adapter yet: run `eval/glimmer.py download` first")
+    results = json.loads((ROOT / "eval.json").read_text()) if (ROOT / "eval.json").exists() else {}
+    table = "\n".join(f"| {k} | {v['median']} | {v['p90']} | {v['under_3']:.0%} |" for k, v in results.items())
+    card = f"""---
+base_model: meta-models/Muse-Glimmer-30B
+library_name: peft
+license: apache-2.0
+tags: [lora, colour, textile, dyeing, rangrez]
+---
+
+# Glimmer for Rangrez: first-dip colourist (LoRA on Muse Glimmer 30B)
+
+Given a target colour in CIELAB, proposes the first dye recipe (turquoise, fuchsia and lemon yellow
+reactive dyes, g/L) for the Rangrez self-driving dye lab. Fine-tuned with LoRA (rank 8, 2 epochs)
+on Fireworks Serverless Training, on 2,900 of the lab's recorded dips: each the recipe dipped and the
+colour SAM 3.1 measured on the dried cloth in a real-looking phone photo. Dataset:
+[{user}/rangrez-lab-dips](https://huggingface.co/datasets/{user}/rangrez-lab-dips).
+
+The dips come from Rangrez's simulator (a hidden dye lot plus realistic photos), not from a
+physical dye house, and the adapter knows that lot.
+
+## First-dip error on 100 held-out targets (CIEDE2000 of the colour the recipe really dyes)
+
+| Method | Median | p90 | Under 3 |
+| --- | --- | --- | --- |
+{table}
+
+Code: https://github.com/TusharTechs/rangrez
+"""
+    model_repo, data_repo = f"{user}/rangrez-glimmer-lora", f"{user}/rangrez-lab-dips"
+    api.create_repo(model_repo, private=True, exist_ok=True)
+    (adapter / "README.md").write_text(card)
+    api.upload_folder(folder_path=str(adapter), repo_id=model_repo, commit_message="Glimmer LoRA for Rangrez")
+    api.create_repo(data_repo, repo_type="dataset", private=True, exist_ok=True)
+    for f in ("train.jsonl", "records.json"):
+        api.upload_file(path_or_fileobj=str(ROOT / f), path_in_repo=f, repo_id=data_repo, repo_type="dataset")
+    print(f"https://huggingface.co/{model_repo}\nhttps://huggingface.co/datasets/{data_repo}")
+
+
 if __name__ == "__main__":
     {"data": cmd_data, "train": cmd_train, "deploy": cmd_deploy, "undeploy": cmd_undeploy,
-     "download": cmd_download, "eval": cmd_eval}[sys.argv[1]]()
+     "download": cmd_download, "eval": cmd_eval, "score": cmd_score, "publish": cmd_publish}[sys.argv[1]]()

@@ -93,6 +93,11 @@
       <label for="tol">Pass tolerance (CIEDE2000)</label>
       <input type="number" id="tol" value="1.5" step="0.1" min="0.5" max="5">
       <div style="height:12px"></div>
+      <div id="liveBox" hidden>
+        <label for="passcode">Live passcode (runs SAM 3.1 and Muse Wonder; without it, the offline policy)</label>
+        <input type="password" id="passcode" autocomplete="off">
+        <div style="height:12px"></div>
+      </div>
       <button id="start">Start campaign</button>
       <div style="height:8px"></div>
       <button class="ghost" id="stop">Stop</button>
@@ -163,6 +168,7 @@ fetch("/api/config").then((r) => r.json()).then((c) => {
   $("agent").textContent = "agent: " + c.agent;
   $("rig").textContent = "rig: " + ({ sim: "simulator", serial: "hardware", assisted: "assisted (your hands)" }[c.rig] || c.rig);
   $("dyeHead").textContent = c.dyes.join(" · ") + " " + c.unit;
+  $("liveBox").hidden = !c.passcode;
 });
 
 function setStatus(s) {
@@ -207,6 +213,7 @@ es.onmessage = (msg) => {
     for (const id of ["shots", "notebook", "api"]) $(id).innerHTML = "";
     $("assist").hidden = true; $("frame").hidden = true; drawChart(); setStatus("idle");
   } else if (e.kind === "start") {
+    $("agent").textContent = "agent: " + e.agent;
     shots = []; tolerance = e.tolerance;
     $("shots").innerHTML = ""; $("notebook").innerHTML = ""; drawChart();
     $("targetChip").style.background = e.target_hex;
@@ -263,7 +270,7 @@ $("usePhoto").onclick = async () => {
   const file = $("photo").files[0];
   if (!file) { $("photoNote").textContent = "Choose a photo first."; return; }
   const form = new FormData();
-  form.append("photo", file); form.append("concept", $("concept").value || "fabric");
+  form.append("photo", file); form.append("concept", $("concept").value || "fabric"); form.append("passcode", $("passcode").value);
   $("photoNote").textContent = "Segmenting…";
   const r = await fetch("/api/target-from-photo", { method: "POST", body: form });
   const j = await r.json();
@@ -279,7 +286,7 @@ $("usePhoto").onclick = async () => {
 $("start").onclick = async () => {
   const r = await fetch("/api/campaign", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ hex: $("picker").value, tolerance: parseFloat($("tol").value) || 1.5 }),
+    body: JSON.stringify({ hex: $("picker").value, tolerance: parseFloat($("tol").value) || 1.5, passcode: $("passcode").value || null }),
   });
   if (!r.ok) { const j = await r.json(); $("photoNote").textContent = j.detail || "Could not start"; }
 };

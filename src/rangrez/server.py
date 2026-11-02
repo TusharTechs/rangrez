@@ -10,6 +10,7 @@ import asyncio
 import json
 import os
 import queue
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -53,13 +54,24 @@ class Lab:
         }))
 
     @property
-    def online(self) -> bool:
+    def key_available(self) -> bool:
         return bool(os.environ.get("MODEL_API_KEY")) and os.environ.get("RANGREZ_OFFLINE") != "1"
 
-    def make_rig(self, target_lab: np.ndarray | None):
+    @property
+    def online(self) -> bool:
+        """Meta models by default; on a public demo (RANGREZ_LIVE_PASSCODE set) only with the passcode."""
+        return self.key_available and not os.environ.get("RANGREZ_LIVE_PASSCODE")
+
+    def live(self, passcode: str | None) -> bool:
+        if self.online:
+            return True
+        code = os.environ.get("RANGREZ_LIVE_PASSCODE", "")
+        return self.key_available and bool(code) and secrets.compare_digest((passcode or "").encode(), code.encode())
+
+    def make_rig(self, target_lab: np.ndarray | None, live: bool = True):
         kind = os.environ.get("RANGREZ_RIG", "sim")
         if kind == "assisted":
-            if not self.online:
+            if not live:
                 raise HTTPException(400, "assisted mode measures real photos with hosted SAM 3.1: set MODEL_API_KEY")
             from .assisted import AssistedRig
 
@@ -81,12 +93,12 @@ class Lab:
         scene = os.environ.get("RANGREZ_SCENE") or scene_names()[seed % len(scene_names())]
         return VirtualRig(seed=seed, target_lab=target_lab, scene=scene)
 
-    def make_segmenter(self, rig=None):
-        if self.online and os.environ.get("RANGREZ_SEGMENTER", "sam") == "sam":
+    def make_segmenter(self, rig=None, live: bool = True):
+        if live and os.environ.get("RANGREZ_SEGMENTER", "sam") == "sam":
             return MuseSamSegmenter(self.log)
         if isinstance(rig, VirtualRig):
             return rig.segmenter()  # offline: the scene's cached SAM masks
-        raise HTTPException(400, "reading a real photo needs hosted SAM 3.1: set MODEL_API_KEY")
+        raise HTTPException(400, "reading a real photo needs hosted SAM 3.1: set MODEL_API_KEY, or enter the live passcode")
 
     def publish(self, event: dict) -> None:
         event = _json_safe(event)
@@ -114,17 +126,18 @@ class Lab:
             self.subscribers.append(q)
         return q
 
-    def start(self, target_lab: np.ndarray, tolerance: float) -> None:
+    def start(self, target_lab: np.ndarray, tolerance: float, live: bool | None = None) -> None:
+        live = self.online if live is None else live
         if self.thread and self.thread.is_alive():
             raise HTTPException(409, "a campaign is already running")
         with self.lock:  # keep only the API calls made since the last start (e.g. reading the target photo)
             self.history = [e for e in self.history if e.get("kind") == "api" and e.get("at", 0) >= self.since]
             self.since = time.time()
-        rig = self.make_rig(None)
-        c = Campaign(target_lab, rig, self.make_segmenter(rig), tolerance=tolerance)
+        rig = self.make_rig(None, live)
+        c = Campaign(target_lab, rig, self.make_segmenter(rig, live), tolerance=tolerance)
         self.rec.begin(type(rig).__name__, {
             "rig": type(rig).__name__, "scene": getattr(rig, "scene", None), "dyes": DYES, "unit": UNIT,
-            "agent": WONDER_MODEL if self.online else "offline policy", "tolerance": tolerance,
+            "agent": WONDER_MODEL if live else "offline policy", "tolerance": tolerance,
             "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),
             "started": time.strftime("%Y-%m-%d %H:%M:%S"),
         })
@@ -134,7 +147,7 @@ class Lab:
         c.listeners.append(self.publish)
         self.campaign = c
         self.publish({"kind": "start", "target_lab": target_lab.tolist(), "target_hex": lab_to_hex(target_lab),
-                      "tolerance": tolerance, "agent": WONDER_MODEL if self.online else "offline policy",
+                      "tolerance": tolerance, "agent": WONDER_MODEL if live else "offline policy",
                       "rig": type(rig).__name__, "at": time.time()})
         delay = float(os.environ.get("RANGREZ_STEP_DELAY", "1.5"))
 
@@ -142,7 +155,7 @@ class Lab:
             from .assisted import Cancelled
 
             try:
-                if self.online:
+                if live:
                     run_with_wonder(c, self.log)
                 else:
                     run_deterministic(c, on_step=lambda: time.sleep(delay))
@@ -179,6 +192,7 @@ class StartBody(BaseModel):
     hex: str | None = None
     lab: list[float] | None = None
     tolerance: float = 1.5
+    passcode: str | None = None  # unlocks the Meta models on a public demo
 
 
 @app.get("/")
@@ -189,6 +203,7 @@ def index() -> FileResponse:
 @app.get("/api/config")
 def config() -> dict:
     return {"online": LAB.online, "agent": WONDER_MODEL if LAB.online else "offline policy",
+            "passcode": bool(os.environ.get("RANGREZ_LIVE_PASSCODE")) and LAB.key_available,
             "rig": os.environ.get("RANGREZ_RIG", "sim"), "dyes": DYES, "unit": UNIT}
 
 
@@ -201,20 +216,20 @@ def start(body: StartBody) -> dict:
     else:
         raise HTTPException(400, "give a hex colour or a Lab triple")
     try:
-        LAB.start(target, body.tolerance)
+        LAB.start(target, body.tolerance, LAB.live(body.passcode))
     except HTTPException:
         raise
     return {"ok": True, "target_hex": lab_to_hex(target)}
 
 
 @app.post("/api/target-from-photo")
-async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabric")) -> dict:
+async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabric"), passcode: str = Form("")) -> dict:
     jpeg = await photo.read()
     try:
         from .assisted import normalise_photo
 
         photo = normalise_photo(jpeg)
-        lab, calibration = target_from_photo(photo, concept, LAB.make_segmenter())
+        lab, calibration = target_from_photo(photo, concept, LAB.make_segmenter(live=LAB.live(passcode)))
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(422, str(exc))
     result = {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibration": calibration, "concept": concept}
