@@ -308,16 +308,26 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
                 paper = max(papers, key=lambda i: i.mask.sum())
                 break
 
+    # A margin around the card: people often lay it overlapping the strip.
+    card_zone = ~_erode(~card.mask, 6) if card is not None else None
+
     def keep(f: Instance) -> bool:
         if card is not None:
-            return not (f.mask & card.mask).any()
+            return (f.mask & card.mask).sum() < 0.5 * f.mask.sum()  # mostly card: it is the card
         if paper is not None:  # the strip lies on the paper; drop only the paper itself
             return f.mask.sum() < 0.6 * paper.mask.sum()
         return True
 
+    def trim(f: Instance) -> Instance:
+        if card_zone is None or not (f.mask & card_zone).any():
+            return f
+        mask = f.mask & ~card_zone
+        ys, xs = np.nonzero(mask)
+        return Instance(mask, (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+
     fabrics: list[Instance] = []
     for prompt in list(_strip_prompt_order):  # cloth words first; shape words when the scene is plain
-        fabrics = [f for f in segmenter.segment(img, jpeg, prompt) if keep(f)]
+        fabrics = [trim(f) for f in segmenter.segment(img, jpeg, prompt) if keep(f)]
         if fabrics:
             # The rig and lighting don't change between dips: try what worked first next time.
             _strip_prompt_order.remove(prompt)
@@ -338,7 +348,7 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
         others = [f for f in fabrics if f is not strip]
         if not others:
             targets = segmenter.segment(img, jpeg, TARGET_PROMPT)
-            others = [t for t in targets if not (t.mask & strip.mask).any() and keep(t)]
+            others = [trim(t) for t in targets if not (t.mask & strip.mask).any() and keep(t)]
         if others:
             target = max(others, key=lambda i: i.mask.sum())
             target_lab, _, _, _ = _lab_of_region(lin, target.mask, M, rng)

@@ -4,7 +4,7 @@ import pytest
 from rangrez.colour import delta_e_2000
 from rangrez.rig import GateError, Inventory, Recipe, RigLimits, check_recipe, execute
 from rangrez.sim import VirtualRig, ground_truth_masks
-from rangrez.vision import OfflineSegmenter, measure
+from rangrez.vision import STRIP_PROMPTS, Instance, OfflineSegmenter, measure
 
 
 @pytest.fixture
@@ -71,3 +71,26 @@ def test_no_reference_at_all_still_measures_but_warns():
     m = measure(shot.image_jpeg, OfflineSegmenter(ground_truth_masks(card=False, paper=False)))
     assert any("uncalibrated" in f for f in m.flags)
     assert m.ok
+
+
+
+def test_card_overlapping_the_strip_is_trimmed_not_fatal():
+    rig = VirtualRig(seed=5)
+    shot = execute(rig, Recipe((1.5, 2.0, 0.5)))
+    boxes = ground_truth_masks()
+    seg = OfflineSegmenter(boxes)
+    plain = seg.segment
+
+    def segment(image, jpeg, concept):  # SAM's strip mask also covers part of the card
+        found = plain(image, jpeg, concept)
+        if concept in STRIP_PROMPTS and found:
+            mask = found[0].mask.copy()
+            mask[200:420, boxes["card"][2] - 90 : boxes["card"][2]] = True
+            ys, xs = np.nonzero(mask)
+            found = [Instance(mask, (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))]
+        return found
+
+    seg.segment = segment
+    m = measure(shot.image_jpeg, seg)
+    assert m.ok, m.flags
+    assert float(delta_e_2000(m.lab, rig.last_swatch_lab)) < 1.5

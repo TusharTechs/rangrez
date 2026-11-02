@@ -97,9 +97,32 @@ The tests cover:
 - colour-card correction;
 - the Kubelka-Munk model;
 - measurement accuracy on rendered frames against the simulator's hidden truth;
+- a colour card lying over the strip;
 - the safety gate;
 - convergence on reachable shades;
 - early stopping on out-of-gamut ones.
+
+## Does it work on real-looking photos?
+
+`eval/` holds a test bench of photo-realistic scenes: undyed cotton strips on printer paper, generated with Muse Image under desk-lamp, daylight, shadowy and tilted-phone light. SAM 3.1 masks the cloth once. Each strip is then recoloured to a known true colour while its real folds, texture and shadows are kept. The paper's true whiteness and tint are randomised and hidden from the pipeline, as with real printer paper. Exposure, white balance, sensor noise and JPEG quality vary per photo.
+
+Measurement, live SAM 3.1, 24 photos (`uv run python eval/accuracy.py`):
+
+| Reference in the photo | Median ΔE00 | p90 | Max |
+| --- | --- | --- | --- |
+| Printed colour card | 0.33 | 0.50 | 0.54 |
+| White paper only | 1.42 | 2.09 | 2.32 |
+
+Full assisted campaigns, live SAM 3.1 and Muse Wonder, household drops profile (`RANGREZ_DYES=home uv run python eval/campaigns.py`). A simulated person follows the drop counts, hidden chemistry dyes the strip, and each dried strip comes back as a realistic phone photo:
+
+| Scene | Dips | Agent's final ΔE00 | True final ΔE00 |
+| --- | --- | --- | --- |
+| Desk lamp, paper only | 4 | 1.70 | 1.74 |
+| Daylight, colour card | 7 | 1.09 | 1.23 |
+| Shadowy, paper only | 4 | 1.74 | 1.75 |
+| Tilted phone, colour card | 5 | 0.24 | 0.23 |
+
+All four matched within the 2.0 tolerance, with no failed API calls. In paper-only mode the target itself was read up to 2.2 ΔE00 off, yet the final cloth truly matched within 1.75: the target and the dips share the same error. These are synthetic photos with simulated chemistry, not real dye on real cloth.
 
 ## Repository
 
@@ -115,6 +138,7 @@ The tests cover:
 | `src/rangrez/serial_rig.py` | Driver for the real rig |
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
+| `eval/` | Photo-realistic test scenes with known truth, accuracy and campaign benchmarks |
 
 ## Built for
 
