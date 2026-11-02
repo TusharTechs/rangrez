@@ -53,6 +53,8 @@ uv sync
 uv run rangrez-lab            # http://127.0.0.1:8000
 ```
 
+Or try it without installing anything: [huggingface.co/spaces/TechTush/rangrez](https://huggingface.co/spaces/TechTush/rangrez).
+
 Without an API key it runs the full loop in the built-in simulator with an offline policy and SAM masks cached for each scene. The simulator has a hidden "real" dye lot and pump noise, and every dip comes back as a real-looking phone photo (see below). Add a key to use hosted SAM 3.1 and Muse Wonder:
 
 ```bash
@@ -187,7 +189,7 @@ Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, le
 - **Fireworks:** free under the Glimmer promotion. Fireworks did not let this account download the weights.
 - **Modal:** one H100, 18 minutes, bf16 LoRA on the text model's attention and MLP layers (`eval/glimmer_modal.py`). These are the weights that are published.
 
-The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. Answers, training curves and the dataset are in `eval/glimmer/`. The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
+The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. Answers, training curves and the dataset are in `eval/glimmer/`. Published: the adapter, [TechTush/rangrez-glimmer-lora](https://huggingface.co/TechTush/rangrez-glimmer-lora), and the dip records, [TechTush/rangrez-lab-dips](https://huggingface.co/datasets/TechTush/rangrez-lab-dips). The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
 
 ## Repository
 
