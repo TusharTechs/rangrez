@@ -27,8 +27,8 @@ KEYWORDS = {
 INTENTS = [  # first match wins. English as whole words; Hindi (Devanagari or Hinglish) as phrases.
     ("stop", r"\b(stop|cancel|abort|band karo|ruk jao)\b|रुको|रुक जाओ|बंद करो|^बस\b"),
     ("repeat", r"\b(repeat|again|say that|what was|instructions|phir se|dobara)\b|फिर से|दोबारा|दुबारा|क्या था"),
-    ("photo", r"\b(done|ready|photo|picture|capture|webcam|shoot|snap|dry now|it'?s dry|ho gaya|ho gya)\b"
-              r"|हो गया|हो गई|फोटो|फ़ोटो|तस्वीर|खींचो|सूख गया"),
+    ("photo", (r"\b(done|ready|photo|picture|capture|webcam|shoot|snap|dry now|it'?s dry|ho gaya|ho gya)\b"
+               r"|हो गया|हो गई|फोटो|फ़ोटो|तस्वीर|खींचो|सूख गया")),
 ]
 LANGUAGES = {"en": ["English"], "hi": ["Hindi", "English"]}
 
