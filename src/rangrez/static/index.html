@@ -54,6 +54,16 @@
   .api div { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
   .api .m { color: var(--cyan); }
   .hint { color: var(--mute); font-size: 12px; }
+  .assist { border-color: var(--accent); }
+  .assist[hidden] { display: none; }
+  .amounts { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
+  .amount { flex: 1; min-width: 90px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; }
+  .amount b { display: block; font-size: 30px; font-variant-numeric: tabular-nums; }
+  .amount small { color: var(--mute); }
+  .assist ol { margin: 0 0 12px; padding-left: 20px; }
+  .assist li { margin: 3px 0; }
+  .pill.waiting { color: var(--cyan); border-color: var(--cyan); }
+  .pill.stopped { color: var(--mute); }
 </style>
 </head>
 <body>
@@ -84,6 +94,8 @@
       <input type="number" id="tol" value="1.5" step="0.1" min="0.5" max="5">
       <div style="height:12px"></div>
       <button id="start">Start campaign</button>
+      <div style="height:8px"></div>
+      <button class="ghost" id="stop">Stop</button>
     </section>
     <section>
       <h2>Meta API calls</h2>
@@ -92,6 +104,16 @@
   </div>
 
   <div class="stack">
+    <section class="assist" id="assist" hidden>
+      <h2 id="assistTitle">Your turn: dip 1</h2>
+      <div class="amounts" id="amounts"></div>
+      <ol id="assistSteps"></ol>
+      <label for="assistPhoto">Photo of the dried strip next to the colour card or on white paper</label>
+      <input type="file" id="assistPhoto" accept="image/*" capture="environment">
+      <div style="height:8px"></div>
+      <div class="row"><button id="sendPhoto">Send photo</button><button class="ghost" id="useWebcam">Use webcam</button></div>
+      <p class="hint" id="assistNote"></p>
+    </section>
     <section>
       <h2>Latest dip vs target</h2>
       <div class="compare">
@@ -113,7 +135,7 @@
     </section>
     <section>
       <h2>Dips</h2>
-      <table><thead><tr><th>#</th><th>recipe g/L (T · F · Y)</th><th>ΔE00</th></tr></thead><tbody id="shots"></tbody></table>
+      <table><thead><tr><th>#</th><th>recipe (<span id="dyeHead">dyes</span>)</th><th>ΔE00</th></tr></thead><tbody id="shots"></tbody></table>
     </section>
     <section>
       <h2>Lab notebook</h2>
@@ -139,14 +161,15 @@ function labToHex([L, a, b]) {
 
 fetch("/api/config").then((r) => r.json()).then((c) => {
   $("agent").textContent = "agent: " + c.agent;
-  $("rig").textContent = "rig: " + (c.rig === "sim" ? "simulator" : "hardware");
+  $("rig").textContent = "rig: " + ({ sim: "simulator", serial: "hardware", assisted: "assisted (your hands)" }[c.rig] || c.rig);
+  $("dyeHead").textContent = c.dyes.join(" · ") + " " + c.unit;
 });
 
 function setStatus(s) {
   const el = $("status");
   el.textContent = s;
   el.className = "pill " + s;
-  $("start").disabled = s === "running";
+  $("start").disabled = s === "running" || s === "waiting";
 }
 
 function feed(id, html) {
@@ -187,7 +210,17 @@ es.onmessage = (msg) => {
     $("dipChip").style.background = "transparent"; $("dipLabel").textContent = "no dip yet";
     $("de").textContent = "—"; $("deBox").classList.remove("pass");
     setStatus("running");
+  } else if (e.kind === "assist") {
+    $("assist").hidden = false;
+    $("assistTitle").textContent = `Your turn: dip ${e.index}`;
+    $("amounts").innerHTML = Object.entries(e.amounts).map(([d, v]) => `<div class="amount"><b>${v}</b><small>${e.unit} ${esc(d)}</small></div>`).join("");
+    $("assistSteps").innerHTML = e.steps.map((s) => `<li>${esc(s)}</li>`).join("");
+    $("assistNote").textContent = "";
+    $("assistPhoto").value = "";
+    setStatus("waiting");
   } else if (e.kind === "shot") {
+    $("assist").hidden = true;
+    if ($("status").textContent === "waiting") setStatus("running");
     shots.push(e); drawChart();
     $("dipChip").style.background = e.hex;
     $("dipLabel").textContent = `dip ${e.index} · ${e.hex}`;
@@ -195,7 +228,7 @@ es.onmessage = (msg) => {
     $("deBox").classList.toggle("pass", e.delta_e <= tolerance);
     $("deNote").textContent = e.delta_e <= tolerance ? "CIEDE2000 · matched" : "CIEDE2000";
     $("frame").src = `/api/shot/${e.index}.jpg?t=${Date.now()}`;
-    const rec = e.recipe.match(/[\d.]+(?= g\/L)/g) || [];
+    const rec = e.recipe.match(/[\d.]+(?= (g\/L|%))/g) || [];
     $("shots").insertAdjacentHTML("beforeend", `<tr><td>${e.index}</td><td><span class="sw" style="background:${e.hex}"></span>${rec.join(" · ")}</td><td>${isFinite(e.delta_e) ? e.delta_e.toFixed(2) : "rejected"}</td></tr>`);
     if (e.flags && e.flags.length) feed("notebook", `<span class="gate">${esc(e.flags.join("; "))}</span>`);
   } else if (e.kind === "note") {
@@ -212,6 +245,7 @@ es.onmessage = (msg) => {
     feed("notebook", `<span class="tool">model refit</span> <span class="muted">uptake ${esc(JSON.stringify(e.gains_after))}, fit error ${e.model_fit_error_de00}</span>`);
   } else if (e.kind === "status") {
     setStatus(e.status);
+    if (!["running", "waiting"].includes(e.status)) $("assist").hidden = true;
     if (e.reason) feed("notebook", `<span class="gate">${esc(e.status)}: ${esc(e.reason)}</span>`);
   } else if (e.kind === "api") {
     feed("api", `<span><span class="m">${esc(e.model)}</span> ${esc(e.purpose)}</span><span class="${e.ok ? "" : "gate"}">${e.seconds}s</span>`);
@@ -241,6 +275,19 @@ $("start").onclick = async () => {
   });
   if (!r.ok) { const j = await r.json(); $("photoNote").textContent = j.detail || "Could not start"; }
 };
+async function sendAssist(url, body) {
+  $("assistNote").textContent = "Measuring with SAM 3.1…";
+  const r = await fetch(url, { method: "POST", body });
+  if (!r.ok) { const j = await r.json(); $("assistNote").textContent = j.detail || "Could not send the photo."; }
+}
+$("sendPhoto").onclick = () => {
+  const file = $("assistPhoto").files[0];
+  if (!file) { $("assistNote").textContent = "Take or choose a photo first."; return; }
+  const form = new FormData(); form.append("photo", file);
+  sendAssist("/api/assist/photo", form);
+};
+$("useWebcam").onclick = () => sendAssist("/api/assist/webcam");
+$("stop").onclick = () => fetch("/api/stop", { method: "POST" });
 drawChart();
 </script>
 </body>

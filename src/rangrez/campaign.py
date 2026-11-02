@@ -14,8 +14,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .colour import delta_e_2000, lab_to_hex
-from .km import DyeModel, fit_gains, nominal_procion_cmy, solve_recipe
-from .rig import DYES, GateError, Recipe, Rig, check_recipe, execute
+from .km import DyeModel, fit_gains, solve_recipe
+from .profiles import PROFILE
+from .rig import DYES, UNIT, GateError, Recipe, Rig, check_recipe, execute
 from .vision import Measurement, Segmenter, measure, overlay
 
 
@@ -38,11 +39,10 @@ class Campaign:
     segmenter: Segmenter
     tolerance: float = 1.5  # CIEDE2000 pass threshold
     max_shots: int = 10
-    model: DyeModel = field(default_factory=nominal_procion_cmy)
+    model: DyeModel = field(default_factory=PROFILE.nominal)
     shots: list[Shot] = field(default_factory=list)
     notebook: list[dict] = field(default_factory=list)
     listeners: list = field(default_factory=list)
-    jacobian: np.ndarray | None = None  # d(Lab)/d(conc) learned from real shots
     status: str = "running"
 
     # -- events ------------------------------------------------------------
@@ -82,7 +82,7 @@ class Campaign:
         m = s.measurement
         return {
             "shot": s.index,
-            "recipe_g_per_l": dict(zip(DYES, np.round(s.recipe.conc, 3).tolist())),
+            "recipe": dict(zip(DYES, np.round(s.recipe.conc, 3).tolist())),
             "measured_lab": [round(v, 2) for v in m.lab],
             "lab_sd": [round(v, 2) for v in m.lab_sd],
             "delta_e00": round(s.delta_e, 2),
@@ -115,7 +115,7 @@ class Campaign:
             step = self._correction_step(best)
             if step is not None:
                 pred = float(delta_e_2000(best.measurement.lab + self._jac(best.recipe.as_array()) @ (step - best.recipe.as_array()), self.target_lab))
-                cands.append(("colourist_correction", step, pred, "Correct the best real dip using the Jacobian learned from real shots."))
+                cands.append(("colourist_correction", step, pred, "Correct the best real dip by its measured error, using the refitted model's sensitivity."))
         out = []
         for name, c, d, why in cands:
             c = np.clip(c, 0, self.rig.limits.max_conc_g_per_l)
@@ -127,17 +127,21 @@ class Campaign:
                 gate = f"refused: {exc}"
             out.append({
                 "method": name,
-                "recipe_g_per_l": dict(zip(DYES, recipe.conc)),
+                "recipe": dict(zip(DYES, recipe.conc)),
                 "predicted_delta_e00": round(float(d), 2),
                 "gate": gate,
                 "why": why,
             })
         return {"candidates": out}
 
-    def run_shot(self, recipe_g_per_l: dict, dip_seconds: float = 90.0, rationale: str = "") -> dict:
+    def run_shot(self, recipe: dict, dip_seconds: float = 90.0, rationale: str = "") -> dict:
         """Gate, dispense, dip, dry, photograph, measure."""
-        conc = tuple(float(recipe_g_per_l.get(d, 0.0)) for d in DYES)
+        conc = tuple(float(recipe.get(d, 0.0)) for d in DYES)
         recipe = Recipe(conc, dip_seconds)
+        # A rig that can only measure coarsely (a person with a syringe) reports what it will really dispense.
+        quantize = getattr(self.rig, "quantize", None)
+        if quantize:
+            recipe = quantize(recipe)
         if len(self.shots) >= self.max_shots:
             return {"refused": "shot budget exhausted; escalate or stop"}
         try:
@@ -150,10 +154,7 @@ class Campaign:
         m = measure(result.image_jpeg, self.segmenter, seed=len(self.shots))
         de = float(delta_e_2000(m.lab, self.target_lab)) if m.ok else float("nan")
         shot = Shot(len(self.shots) + 1, recipe, m, de, rationale, result.image_jpeg, overlay(result.image_jpeg, m))
-        prev_best = self.best
         self.shots.append(shot)
-        if m.ok and prev_best is not None:
-            self._update_jacobian(prev_best, shot)
         self.emit("shot", index=shot.index, recipe=recipe.describe(), lab=m.lab.tolist(),
                   hex=lab_to_hex(m.lab), delta_e=de, flags=m.flags, rationale=rationale)
         if m.ok and de <= self.tolerance:
@@ -165,8 +166,8 @@ class Campaign:
         best = self.best
         self.status = "out_of_gamut"
         text = (
-            f"Target is outside what turquoise, fuchsia and lemon yellow can reach on cotton within the "
-            f"{self.rig.limits.max_conc_g_per_l:.0f} g/L safety cap. Closest achievable: dip {best.index}, "
+            f"Target is outside what {', '.join(DYES)} can reach on cotton within the "
+            f"{self.rig.limits.max_conc_g_per_l:.0f} {UNIT} safety cap. Closest achievable: dip {best.index}, "
             f"{lab_to_hex(best.measurement.lab)}, dE00 {best.delta_e:.2f}. A darker or different dye is needed."
         )
         self.note(text, who="agent")
@@ -181,8 +182,8 @@ class Campaign:
 
     # -- numerics ----------------------------------------------------------------
     def _jac(self, conc: np.ndarray) -> np.ndarray:
-        if self.jacobian is not None:
-            return self.jacobian
+        # Sensitivity from the model refitted to every real dip. Updating it dip-to-dip
+        # (Broyden) chases measurement noise when steps are small, e.g. whole drops.
         return self._model_jacobian(conc)
 
     def _model_jacobian(self, conc: np.ndarray) -> np.ndarray:
@@ -194,15 +195,6 @@ class Campaign:
             c[i] += h
             cols.append((self.model.predict_lab(c) - base) / h)
         return np.stack(cols, axis=1)
-
-    def _update_jacobian(self, a: Shot, b: Shot) -> None:
-        """Broyden rank-1 update from two real dips: reality, not the model."""
-        dc = b.recipe.as_array() - a.recipe.as_array()
-        dlab = b.measurement.lab - a.measurement.lab
-        if np.linalg.norm(dc) < 1e-6:
-            return
-        J = self._jac(a.recipe.as_array())
-        self.jacobian = J + np.outer(dlab - J @ dc, dc) / (dc @ dc)
 
     def _correction_step(self, best: Shot) -> np.ndarray | None:
         c0 = best.recipe.as_array()

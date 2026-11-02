@@ -55,3 +55,19 @@ def test_execute_spends_inventory(rig):
     execute(rig, Recipe((2.0, 0.0, 0.0)))
     assert rig.inventory.stock_ml[0] == pytest.approx(before[0] - 2.0)
     assert rig.inventory.strips == 59
+
+
+def test_card_free_measurement_with_white_paper():
+    rig = VirtualRig(seed=8, show_card=False, paper=True)
+    shot = execute(rig, Recipe((2.5, 1.0, 0.8)))
+    m = measure(shot.image_jpeg, OfflineSegmenter(ground_truth_masks(card=False, paper=True)))
+    assert any("white-paper balance" in f for f in m.flags)
+    assert float(delta_e_2000(m.lab, rig.last_swatch_lab)) < 3.0
+
+
+def test_no_reference_at_all_still_measures_but_warns():
+    rig = VirtualRig(seed=8, show_card=False, paper=False)
+    shot = execute(rig, Recipe((2.5, 1.0, 0.8)))
+    m = measure(shot.image_jpeg, OfflineSegmenter(ground_truth_masks(card=False, paper=False)))
+    assert any("uncalibrated" in f for f in m.flags)
+    assert m.ok

@@ -37,7 +37,7 @@ target colour ──► Muse Wonder (lead colourist)
 
 - **The model never drives a pump.** Every recipe passes a deterministic gate (concentration caps, bath volume, stock levels, dip time). The ESP32 firmware enforces the same limits again, behind a hardware e-stop.
 - **Numbers come from tools, not from prose.** Colour maths (CIELAB, CIEDE2000, colour-card correction, Kubelka-Munk) is plain, tested code; the agent reasons over its results.
-- **It learns this dye lot.** After every dip the dye model refits per-dye uptake. Near the target, Rangrez switches to a colourist-style correction whose Jacobian is learned from real dips by Broyden updates, because no model captures everything (saturation, lot strength).
+- **It learns this dye lot.** After every dip the dye model refits per-dye uptake. Near the target, Rangrez switches to a colourist-style correction: it takes the best real dip and corrects it by its measured error, using the refitted model's sensitivity. The model alone always predicts a perfect match, but no model captures everything (saturation, lot strength).
 - **It knows what it can't do.** If dips at the safety cap still miss, the shade is outside this dye set's gamut. Rangrez stops and reports the closest dip instead of wasting cotton.
 - **It escalates.** Three dips without real improvement (beyond measurement noise) hand control back to a human.
 - **It measures cloth, not liquid.** A cup of dye does not predict the shade on fabric, so every reading is taken on a dried, dyed cotton segment.
@@ -55,6 +55,30 @@ Without an API key it runs the full loop in the built-in simulator with an offli
 cp .env.example .env          # set MODEL_API_KEY
 uv run rangrez-lab
 ```
+
+### Run it at home for free (assisted mode)
+
+You can run the lab with no hardware: you are the pumps and your phone is the camera.
+
+| Need | Free option |
+| --- | --- |
+| Colours | Blue, red and yellow sketch-pen ink or food colour |
+| Cloth | Strips of an old white cotton T-shirt or handkerchief |
+| Measuring | Count drops with a dropper or straw |
+| Reference | A sheet of white paper; the printed colour card is better if you have one |
+| Camera | Your phone (upload) or a webcam / Continuity Camera |
+
+```bash
+RANGREZ_RIG=assisted RANGREZ_DYES=home RANGREZ_HOST=0.0.0.0 uv run rangrez-lab
+```
+
+1. Open the dashboard on your laptop, or from your phone at `http://<laptop-ip>:8000`.
+2. Photograph your target cloth on the paper and press "Read colour with SAM 3.1".
+3. Start the campaign. For every dip the dashboard tells you the drops of each colour and the dip time.
+4. Dip, dry, lay the strip on the same paper under the same light, and send the photo.
+5. SAM 3.1 measures it and Muse Wonder decides the next dip.
+
+Without the colour card, Rangrez white-balances against the paper. That is about 2–3 ΔE00 less precise, and every reading says so.
 
 On the real rig, see [hardware/BUILD.md](hardware/BUILD.md):
 

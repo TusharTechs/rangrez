@@ -15,6 +15,8 @@ from collections.abc import Callable
 import numpy as np
 
 from .campaign import Campaign
+from .profiles import PROFILE
+from .rig import DYES
 from .vision import BASE_URL, ApiCall, CallLog
 
 WONDER_MODEL = os.environ.get("RANGREZ_AGENT_MODEL", "muse-wonder-1.0")
@@ -37,16 +39,16 @@ You control the lab only through tools. Rules:
 - Write one short notebook entry (write_note) per shot: hypothesis, what you changed, what you expect.
 - If dips at the concentration cap still miss, the shade is outside this dye set's gamut: say so and report the closest dip.
 - Stop with finish when the target is matched or the budget is spent. Use escalate if something looks physically wrong.
-Concentrations are g/L of dye in a 20 mL bath; dyes are turquoise, fuchsia, lemon yellow (cold fibre-reactive on cotton)."""
+Dyes: {dyes}. {description}."""
 
 TOOLS = [
     {"type": "function", "function": {"name": "get_state", "description": "Target, shots so far, best match, model gains, stock levels.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "fit_model", "description": "Refit the Kubelka-Munk dye model to all valid shots.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "suggest_recipes", "description": "Candidate recipes from model inversion and colourist correction, each with predicted dE00 and gate status.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "run_shot", "description": "Dispense, dip a cotton strip, dry, photograph and measure. Gated by hard safety limits.", "parameters": {"type": "object", "properties": {
-        "recipe_g_per_l": {"type": "object", "properties": {"turquoise": {"type": "number"}, "fuchsia": {"type": "number"}, "lemon yellow": {"type": "number"}}, "required": ["turquoise", "fuchsia", "lemon yellow"]},
+        "recipe": {"type": "object", "properties": {d: {"type": "number"} for d in DYES}, "required": list(DYES)},
         "dip_seconds": {"type": "number", "description": "30-300, default 90"},
-        "rationale": {"type": "string"}}, "required": ["recipe_g_per_l", "rationale"]}}},
+        "rationale": {"type": "string"}}, "required": ["recipe", "rationale"]}}},
     {"type": "function", "function": {"name": "write_note", "description": "Append to the lab notebook.", "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}}},
     {"type": "function", "function": {"name": "escalate", "description": "Stop and hand over to the human colourist.", "parameters": {"type": "object", "properties": {"reason": {"type": "string"}}, "required": ["reason"]}}},
     {"type": "function", "function": {"name": "finish", "description": "End the campaign with a short summary.", "parameters": {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}}},
@@ -81,7 +83,7 @@ def dispatch(c: Campaign, name: str, args: dict) -> dict:
     if name == "suggest_recipes":
         return c.suggest_recipes()
     if name == "run_shot":
-        out = c.run_shot(args["recipe_g_per_l"], float(args.get("dip_seconds", 90.0)), args.get("rationale", ""))
+        out = c.run_shot(args["recipe"], float(args.get("dip_seconds", 90.0)), args.get("rationale", ""))
         if c.status == "running" and _out_of_gamut(c):
             c.declare_out_of_gamut()
             out["out_of_gamut"] = True
@@ -110,7 +112,7 @@ def run_with_wonder(c: Campaign, log: CallLog | None = None, max_turns: int = 60
     log = log or CallLog()
     client = OpenAI(base_url=BASE_URL, api_key=os.environ["MODEL_API_KEY"], timeout=120, max_retries=2)
     messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": SYSTEM_PROMPT.format(dyes=", ".join(DYES), description=PROFILE.description)},
         {"role": "user", "content": "New campaign. Current state:\n" + json.dumps(c.state())},
     ]
     for _ in range(max_turns):
@@ -158,7 +160,7 @@ def run_deterministic(c: Campaign, on_step: Callable[[], None] | None = None) ->
         correction = [x for x in cands if x["method"] == "colourist_correction"]
         pick = correction[0] if near and correction else min(cands, key=lambda x: x["predicted_delta_e00"])
         dispatch(c, "write_note", {"text": f"Shot {len(c.shots) + 1}: {pick['method']} predicts dE00 {pick['predicted_delta_e00']}."})
-        dispatch(c, "run_shot", {"recipe_g_per_l": pick["recipe_g_per_l"], "rationale": pick["why"]})
+        dispatch(c, "run_shot", {"recipe": pick["recipe"], "rationale": pick["why"]})
         if on_step:
             on_step()
     if c.status == "running":

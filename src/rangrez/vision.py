@@ -35,6 +35,10 @@ CARD_PROMPT = "color checker card"
 STRIP_PROMPT = "fabric strip"
 TARGET_PROMPT = "fabric swatch"
 STRIP_PROMPTS = (STRIP_PROMPT, "cotton tape", "rectangle")
+PAPER_PROMPT = "white paper"
+PAPER_PROMPTS = (PAPER_PROMPT, "sheet of paper", "white rectangle")
+_paper_prompt_order = list(PAPER_PROMPTS)
+PAPER_SRGB = 0.94  # office paper under a lamp reads close to, not exactly, white
 _strip_prompt_order = list(STRIP_PROMPTS)
 
 
@@ -92,7 +96,7 @@ class OfflineSegmenter:
         self.boxes = boxes
 
     def segment(self, image: Image.Image, jpeg: bytes, concept: str) -> list[Instance]:
-        key = "swatch" if concept in STRIP_PROMPTS else {CARD_PROMPT: "card", TARGET_PROMPT: "target"}[concept]
+        key = "swatch" if concept in STRIP_PROMPTS else {CARD_PROMPT: "card", TARGET_PROMPT: "target"}.get(concept, "paper" if concept in PAPER_PROMPTS else concept)
         shape = (image.height, image.width)
         out = []
         for name in ([key] if key != "swatch" else ["swatch", "target"]):
@@ -249,32 +253,64 @@ def _lab_of_region(lin: np.ndarray, mask: np.ndarray, M: np.ndarray, rng: np.ran
     return lab, np.std(boots, axis=0), len(px), flags
 
 
+def _white_balance(lin: np.ndarray, paper: Instance | None, fabrics: list[Instance]) -> tuple[np.ndarray, list[str]]:
+    """Single-reference correction from bare paper (paper minus anything lying on it)."""
+    if paper is None:
+        return np.vstack([np.eye(3), np.zeros((1, 3))]), ["WARN: no colour card or white paper in frame; camera colours, uncalibrated"]
+    bare = paper.mask.copy()
+    for f in fabrics:
+        bare &= ~f.mask
+    bare = _erode(bare, 6)
+    if bare.sum() < 500:
+        return np.vstack([np.eye(3), np.zeros((1, 3))]), ["WARN: too little bare paper visible; camera colours, uncalibrated"]
+    white = np.median(lin[bare], axis=0)
+    target = srgb_to_linear(np.full(3, PAPER_SRGB))
+    M = np.vstack([np.diag(target / np.maximum(white, 1e-4)), np.zeros((1, 3))])
+    return M, ["WARN: no colour card; white-paper balance (about 2-3 dE00 less precise)"]
+
+
 def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: int = 0) -> Measurement:
     img, srgb = decode(jpeg)
     lin = srgb_to_linear(srgb)
     rng = np.random.default_rng(seed)
     flags: list[str] = []
 
+    # Calibration reference, best first: the 24-patch card, else a sheet of white paper.
     cards = segmenter.segment(img, jpeg, CARD_PROMPT)
-    if not cards:
-        raise RuntimeError("colour card not found in frame")
-    card = max(cards, key=lambda i: i.mask.sum())
-    inner = _card_inner_box(card)
-    patches = _patch_samples(lin, inner)
-    ref = reference_linear()
-    from .colour import fit_colour_correction
+    card = max(cards, key=lambda i: i.mask.sum()) if cards else None
+    paper = None
+    residual = float("nan")
+    if card is not None:
+        patches = _patch_samples(lin, _card_inner_box(card))
+        ref = reference_linear()
+        from .colour import fit_colour_correction
 
-    M = fit_colour_correction(patches, ref)
-    corrected = np.clip(apply_colour_correction(M, patches), 0, 1)
-    residual = float(np.mean(delta_e_2000(xyz_to_lab(linear_rgb_to_xyz(corrected)), xyz_to_lab(linear_rgb_to_xyz(ref)))))
-    if residual > 4:
-        flags.append(f"REJECT: card fit residual {residual:.1f} dE00")
-    elif residual > 2:
-        flags.append(f"WARN: card fit residual {residual:.1f} dE00")
+        M = fit_colour_correction(patches, ref)
+        corrected = np.clip(apply_colour_correction(M, patches), 0, 1)
+        residual = float(np.mean(delta_e_2000(xyz_to_lab(linear_rgb_to_xyz(corrected)), xyz_to_lab(linear_rgb_to_xyz(ref)))))
+        if residual > 4:
+            flags.append(f"REJECT: card fit residual {residual:.1f} dE00")
+        elif residual > 2:
+            flags.append(f"WARN: card fit residual {residual:.1f} dE00")
+    else:
+        for prompt in list(_paper_prompt_order):
+            papers = segmenter.segment(img, jpeg, prompt)
+            if papers:
+                _paper_prompt_order.remove(prompt)
+                _paper_prompt_order.insert(0, prompt)
+                paper = max(papers, key=lambda i: i.mask.sum())
+                break
+
+    def keep(f: Instance) -> bool:
+        if card is not None:
+            return not (f.mask & card.mask).any()
+        if paper is not None:  # the strip lies on the paper; drop only the paper itself
+            return f.mask.sum() < 0.6 * paper.mask.sum()
+        return True
 
     fabrics: list[Instance] = []
     for prompt in list(_strip_prompt_order):  # cloth words first; shape words when the scene is plain
-        fabrics = [f for f in segmenter.segment(img, jpeg, prompt) if not (f.mask & card.mask).any()]
+        fabrics = [f for f in segmenter.segment(img, jpeg, prompt) if keep(f)]
         if fabrics:
             # The rig and lighting don't change between dips: try what worked first next time.
             _strip_prompt_order.remove(prompt)
@@ -282,6 +318,9 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
             break
     if not fabrics:
         raise RuntimeError("fabric strip not found in frame")
+    if card is None:
+        M, f0 = _white_balance(lin, paper, fabrics)
+        flags += f0
     # The strip hangs vertically from the dip arm: the tallest, narrowest fabric.
     strip = max(fabrics, key=lambda i: i.aspect)
     lab, lab_sd, n, f2 = _lab_of_region(lin, strip.mask, M, rng)
@@ -292,11 +331,12 @@ def measure(jpeg: bytes, segmenter: Segmenter, with_target: bool = False, seed: 
         others = [f for f in fabrics if f is not strip]
         if not others:
             targets = segmenter.segment(img, jpeg, TARGET_PROMPT)
-            others = [t for t in targets if not (t.mask & strip.mask).any() and not (t.mask & card.mask).any()]
+            others = [t for t in targets if not (t.mask & strip.mask).any() and keep(t)]
         if others:
             target = max(others, key=lambda i: i.mask.sum())
             target_lab, _, _, _ = _lab_of_region(lin, target.mask, M, rng)
-    return Measurement(lab, lab_sd, residual, n, flags, card.box, strip.box, target_lab)
+    ref_box = card.box if card is not None else (paper.box if paper is not None else (0, 0, 0, 0))
+    return Measurement(lab, lab_sd, residual, n, flags, ref_box, strip.box, target_lab)
 
 
 def target_from_photo(jpeg: bytes, concept: str, segmenter: Segmenter) -> tuple[np.ndarray, bool]:

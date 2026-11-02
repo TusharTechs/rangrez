@@ -13,17 +13,20 @@ from typing import Protocol
 
 import numpy as np
 
-DYES = ["turquoise", "fuchsia", "lemon yellow"]
+from .profiles import PROFILE
+
+DYES = list(PROFILE.names)
+UNIT = PROFILE.unit
 
 
 @dataclass(frozen=True)
 class RigLimits:
     bath_ml: float = 20.0  # liquor per shot
-    stock_g_per_l: float = 20.0  # concentration of each dye stock bottle
-    max_conc_g_per_l: float = 10.0  # per dye, in the bath
+    stock_g_per_l: float = PROFILE.stock_per_l  # stock concentration, in UNIT
+    max_conc_g_per_l: float = PROFILE.max_conc  # per dye, in the bath, in UNIT
     max_dye_fraction: float = 0.9  # dye stock may fill at most this share of the bath
     dip_seconds: tuple[float, float] = (30.0, 300.0)
-    min_stock_ml: float = 5.0  # refuse to run a bottle dry
+    min_stock_ml: float = PROFILE.min_stock_ml  # refuse to run a bottle dry
 
 
 @dataclass(frozen=True)
@@ -35,7 +38,7 @@ class Recipe:
         return np.array(self.conc, dtype=float)
 
     def describe(self) -> str:
-        parts = [f"{name} {c:.2f} g/L" for name, c in zip(DYES, self.conc)]
+        parts = [f"{name} {c:.2f} {UNIT}" for name, c in zip(DYES, self.conc)]
         return ", ".join(parts) + f", dip {self.dip_seconds:.0f} s"
 
 
@@ -51,7 +54,7 @@ class GateError(ValueError):
 
 @dataclass
 class Inventory:
-    stock_ml: list[float] = field(default_factory=lambda: [250.0, 250.0, 250.0])
+    stock_ml: list[float] = field(default_factory=lambda: [PROFILE.bottle_ml] * len(PROFILE.names))
     strips: int = 60
 
 
@@ -65,7 +68,7 @@ def check_recipe(recipe: Recipe, limits: RigLimits, inventory: Inventory) -> Pum
     if np.any(conc < 0):
         raise GateError("concentrations must be >= 0")
     if np.any(conc > limits.max_conc_g_per_l):
-        raise GateError(f"each dye is capped at {limits.max_conc_g_per_l} g/L")
+        raise GateError(f"each dye is capped at {limits.max_conc_g_per_l} {UNIT}")
     lo, hi = limits.dip_seconds
     if not lo <= recipe.dip_seconds <= hi:
         raise GateError(f"dip time must be between {lo:.0f} and {hi:.0f} s")

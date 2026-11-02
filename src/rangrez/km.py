@@ -95,18 +95,10 @@ class DyeModel:
 
 
 def nominal_procion_cmy() -> DyeModel:
-    """The supplier's nominal model of turquoise, fuchsia and lemon yellow.
+    """The supplier's nominal reactive set; kept for tests and the simulator."""
+    from .profiles import nominal_reactive
 
-    This is the agent's prior; real dye lots differ, which is why it refits.
-    """
-    unit_ks = np.stack(
-        [
-            absorption_band(640, 55, 0.55),  # turquoise absorbs red
-            absorption_band(540, 40, 0.60),  # fuchsia absorbs green
-            absorption_band(430, 35, 0.50),  # lemon yellow absorbs blue
-        ]
-    )
-    return DyeModel(["turquoise", "fuchsia", "lemon yellow"], unit_ks)
+    return nominal_reactive()
 
 
 def fit_gains(model: DyeModel, shots: list[tuple[np.ndarray, np.ndarray]]) -> DyeModel:
@@ -124,9 +116,10 @@ def fit_gains(model: DyeModel, shots: list[tuple[np.ndarray, np.ndarray]]) -> Dy
         trial.gains = np.exp(log_gains)
         pred = np.array([trial.predict_lab(c) for c in concs])
         # Mild prior pulling gains towards 1 keeps the fit sane with few shots.
-        return np.concatenate([delta_e_2000(pred, labs), 0.5 * log_gains])
+        return np.concatenate([delta_e_2000(pred, labs), 0.2 * log_gains])
 
-    result = least_squares(residual, np.log(model.gains), bounds=(np.log(0.2), np.log(5.0)))
+    # Wide bounds: household inks can be far stronger or weaker than any nominal guess.
+    result = least_squares(residual, np.log(model.gains), bounds=(np.log(0.05), np.log(20.0)))
     fitted = model.copy()
     fitted.gains = np.exp(result.x)
     return fitted

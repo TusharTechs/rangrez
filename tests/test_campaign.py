@@ -55,7 +55,7 @@ def test_unreachable_saturated_red_never_loops_forever():
 
 def test_run_shot_refuses_unsafe_recipe_without_dispensing():
     c = make_campaign([50, 0, 0])
-    out = dispatch(c, "run_shot", {"recipe_g_per_l": {"turquoise": 50, "fuchsia": 0, "lemon yellow": 0}, "rationale": "test"})
+    out = dispatch(c, "run_shot", {"recipe": {"turquoise": 50, "fuchsia": 0, "lemon yellow": 0}, "rationale": "test"})
     assert "refused" in out
     assert c.shots == []
     assert c.rig.inventory.strips == 60
@@ -65,5 +65,5 @@ def test_state_is_json_ready():
     import json
 
     c = make_campaign([50, 10, 10])
-    dispatch(c, "run_shot", {"recipe_g_per_l": {"turquoise": 1, "fuchsia": 1, "lemon yellow": 1}, "rationale": "probe"})
+    dispatch(c, "run_shot", {"recipe": {"turquoise": 1, "fuchsia": 1, "lemon yellow": 1}, "rationale": "probe"})
     json.dumps(c.state())

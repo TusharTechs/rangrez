@@ -23,7 +23,7 @@ from pydantic import BaseModel
 from .agent import WONDER_MODEL, run_deterministic, run_with_wonder
 from .campaign import Campaign
 from .colour import hex_to_lab, lab_to_hex
-from .rig import DYES
+from .rig import DYES, UNIT
 from .sim import VirtualRig, ground_truth_masks
 from .vision import CallLog, MuseSamSegmenter, OfflineSegmenter, target_from_photo
 
@@ -51,7 +51,17 @@ class Lab:
         return bool(os.environ.get("MODEL_API_KEY")) and os.environ.get("RANGREZ_OFFLINE") != "1"
 
     def make_rig(self, target_lab: np.ndarray | None):
-        if os.environ.get("RANGREZ_RIG", "sim") == "serial":
+        kind = os.environ.get("RANGREZ_RIG", "sim")
+        if kind == "assisted":
+            if not self.online:
+                raise HTTPException(400, "assisted mode measures real photos with hosted SAM 3.1: set MODEL_API_KEY")
+            from .assisted import AssistedRig
+
+            return AssistedRig(
+                on_instructions=lambda w: self.publish({"kind": "assist", **w, "at": time.time()}),
+                camera_index=int(os.environ.get("RANGREZ_CAMERA", "0")),
+            )
+        if kind == "serial":
             from .serial_rig import SerialRig
 
             return SerialRig(os.environ["RANGREZ_PORT"])
@@ -63,6 +73,7 @@ class Lab:
         return OfflineSegmenter(ground_truth_masks())
 
     def publish(self, event: dict) -> None:
+        event = _json_safe(event)
         for q in list(self.subscribers):
             q.put(event)
 
@@ -79,17 +90,37 @@ class Lab:
         delay = float(os.environ.get("RANGREZ_STEP_DELAY", "1.5"))
 
         def work() -> None:
+            from .assisted import Cancelled
+
             try:
                 if self.online:
                     run_with_wonder(c, self.log)
                 else:
                     run_deterministic(c, on_step=lambda: time.sleep(delay))
+            except Cancelled as exc:
+                c.status = "stopped"
+                self.publish({"kind": "status", "status": "stopped", "reason": str(exc), "at": time.time()})
             except Exception as exc:  # surface failures on the dashboard, never silently
                 c.status = "error"
                 self.publish({"kind": "status", "status": "error", "reason": str(exc), "at": time.time()})
 
         self.thread = threading.Thread(target=work, daemon=True)
         self.thread.start()
+
+
+def _json_safe(value):
+    """Browsers reject NaN in JSON; a rejected measurement becomes null."""
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    return value
 
 
 LAB = Lab()
@@ -109,7 +140,7 @@ def index() -> FileResponse:
 @app.get("/api/config")
 def config() -> dict:
     return {"online": LAB.online, "agent": WONDER_MODEL if LAB.online else "offline policy",
-            "rig": os.environ.get("RANGREZ_RIG", "sim"), "dyes": DYES}
+            "rig": os.environ.get("RANGREZ_RIG", "sim"), "dyes": DYES, "unit": UNIT}
 
 
 @app.post("/api/campaign")
@@ -120,7 +151,10 @@ def start(body: StartBody) -> dict:
         target = hex_to_lab(body.hex)
     else:
         raise HTTPException(400, "give a hex colour or a Lab triple")
-    LAB.start(target, body.tolerance)
+    try:
+        LAB.start(target, body.tolerance)
+    except HTTPException:
+        raise
     return {"ok": True, "target_hex": lab_to_hex(target)}
 
 
@@ -132,6 +166,43 @@ async def target_photo(photo: UploadFile = File(...), concept: str = Form("fabri
     except RuntimeError as exc:
         raise HTTPException(422, str(exc))
     return {"lab": [round(v, 2) for v in lab], "hex": lab_to_hex(lab), "calibrated": calibrated}
+
+
+@app.post("/api/assist/photo")
+async def assist_photo(photo: UploadFile = File(...)) -> dict:
+    rig = getattr(LAB.campaign, "rig", None)
+    if rig is None or not hasattr(rig, "provide"):
+        raise HTTPException(409, "no assisted campaign is waiting for a photo")
+    try:
+        rig.provide(await photo.read())
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(409, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/assist/webcam")
+def assist_webcam() -> dict:
+    rig = getattr(LAB.campaign, "rig", None)
+    if rig is None or not hasattr(rig, "provide"):
+        raise HTTPException(409, "no assisted campaign is waiting for a photo")
+    try:
+        rig.provide(rig.capture())
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(409, str(exc))
+    return {"ok": True}
+
+
+@app.post("/api/stop")
+def stop() -> dict:
+    c = LAB.campaign
+    if c is None:
+        return {"ok": True}
+    if hasattr(c.rig, "cancel"):
+        c.rig.cancel()
+    if c.status == "running":
+        c.status = "stopped"
+        LAB.publish({"kind": "status", "status": "stopped", "reason": "stopped from the dashboard", "at": time.time()})
+    return {"ok": True}
 
 
 @app.get("/api/state")

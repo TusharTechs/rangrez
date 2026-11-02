@@ -28,6 +28,7 @@ GAP = 8
 SWATCH_BOX = (640, 150, 760, 590)  # left, top, right, bottom
 TARGET_BOX = (860, 230, 1110, 510)
 CUP_CENTRE, CUP_R = (1180, 110), 62
+PAPER_BOX = (590, 110, 1150, 640)  # a sheet of printer paper under the strip and target
 
 
 def card_patch_boxes() -> list[tuple[int, int, int, int]]:
@@ -81,6 +82,8 @@ class VirtualRig:
     world: DyeModel = field(default_factory=true_world_model)
     camera: Camera = field(default_factory=Camera)
     saturation_g_per_l: float = 14.0
+    show_card: bool = True
+    paper: bool = False
     pump_cv: float = 0.02
 
     def __post_init__(self) -> None:
@@ -125,11 +128,15 @@ class VirtualRig:
     # -- camera ----------------------------------------------------------
     def render(self) -> bytes:
         canvas = np.full((H, W, 3), 0.42, dtype=float)  # light-box floor, linear
-        cl, ct, cr, cb = card_box()
-        canvas[ct:cb, cl:cr] = 0.012  # black card body
-        ref_lin = srgb_to_linear(PATCH_SRGB_8BIT / 255.0)
-        for (l, t, r, b), lin in zip(card_patch_boxes(), ref_lin):
-            canvas[t:b, l:r] = lin
+        if self.show_card:
+            cl, ct, cr, cb = card_box()
+            canvas[ct:cb, cl:cr] = 0.012  # black card body
+            ref_lin = srgb_to_linear(PATCH_SRGB_8BIT / 255.0)
+            for (l, t, r, b), lin in zip(card_patch_boxes(), ref_lin):
+                canvas[t:b, l:r] = lin
+        if self.paper:
+            pl, pt, pr, pb = PAPER_BOX
+            canvas[pt:pb, pl:pr] = srgb_to_linear(0.94)
 
         if self.last_swatch_lab is not None:
             self._paint_cloth(canvas, SWATCH_BOX, self.last_swatch_lab)
@@ -159,6 +166,11 @@ class VirtualRig:
         canvas[t:b, l:r] = base * weave[..., None]
 
 
-def ground_truth_masks() -> dict[str, tuple[int, int, int, int]]:
+def ground_truth_masks(card: bool = True, paper: bool = False) -> dict[str, tuple[int, int, int, int]]:
     """Boxes the offline segmenter uses in place of hosted SAM (tests, no API key)."""
-    return {"card": card_box(), "swatch": SWATCH_BOX, "target": TARGET_BOX}
+    boxes = {"swatch": SWATCH_BOX, "target": TARGET_BOX}
+    if card:
+        boxes["card"] = card_box()
+    if paper:
+        boxes["paper"] = PAPER_BOX
+    return boxes
