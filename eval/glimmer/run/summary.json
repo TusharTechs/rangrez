@@ -1,0 +1,44 @@
+{
+  "steps": 364,
+  "base": {
+    "label": "base",
+    "exact_match": 0.0,
+    "unterminated": 40,
+    "prompt_tokens": 15397,
+    "sampled_tokens": 181996,
+    "field_accuracy": {
+      "turquoise": 0.03,
+      "fuchsia": 0.11,
+      "lemon yellow": 0.1
+    }
+  },
+  "tuned": {
+    "label": "tuned",
+    "exact_match": 0.04,
+    "unterminated": 0,
+    "prompt_tokens": 15397,
+    "sampled_tokens": 3200,
+    "field_accuracy": {
+      "turquoise": 0.26,
+      "fuchsia": 0.28,
+      "lemon yellow": 0.32
+    }
+  },
+  "promoted_model": "accounts/techtush/models/muse-starter-sl-rangrez-glimmer-v1",
+  "exact_match_delta": 0.04,
+  "paired": {
+    "only_tuned_correct": 4,
+    "only_base_correct": 0,
+    "p_value": 0.125
+  },
+  "session": "ts-d2b4b6637eee4215a612c468b4fdda74",
+  "log": "muse_starter_logs/rangrez-glimmer-v1",
+  "cost": {
+    "training": "$0 (promotional)",
+    "evaluation_sampling": {
+      "prompt_tokens": 30794,
+      "sampled_tokens": 185196,
+      "note": "billed separately from training at published per-token rates"
+    }
+  }
+}

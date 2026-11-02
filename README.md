@@ -171,6 +171,19 @@ Offline benchmark of the same tools, 24 shades each, every dip a realistic photo
 
 Reading a garment's colour from a customer's photo is the weakest step. A folded kurta covers half the paper, so the light under it has to be guessed from the paper around it, and live readings were 2.7–3.9 ΔE00 off even with the card. Lay the customer's cloth beside the strip whenever you have it.
 
+## Glimmer: the lab's first dip
+
+The supplier's model knows the dyes in general, not this dye lot through this camera. Muse Glimmer 30B was fine-tuned with LoRA on Fireworks Serverless Training. The data was the lab's own records: 2,900 dips, each the recipe dipped and the colour SAM 3.1 measured on the cloth in a real-looking photo. That was 364 steps, rank 8, 2 epochs, free under Fireworks' Glimmer promotion. Its first recipes were then scored on 100 held-out targets by the colour they really dye (`uv run python eval/glimmer.py score`):
+
+| First dip from | Median ΔE00 | p90 | Under 3 |
+| --- | --- | --- | --- |
+| Supplier model (the lab's default) | 4.10 | 8.52 | 38% |
+| Classical model refitted to 400 of the lab's dips | 2.05 | 3.56 | 78% |
+| Muse Glimmer 30B, base | 11.38 | 19.40 | 8% (40 answers still reasoning at 2,048 tokens) |
+| **Muse Glimmer 30B, fine-tuned** | **1.59** | **3.46** | **88%** |
+
+The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set to a Fireworks deployment, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. The base and tuned answers, the training metrics and the dataset are in `eval/glimmer/`. The LoRA adapter is published on Hugging Face. The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
+
 ## Repository
 
 | Path | What |
@@ -190,6 +203,9 @@ Reading a garment's colour from a customer's photo is the weakest step. A folded
 | `firmware/rangrez_rig/` | ESP32 firmware with independent hard limits |
 | `hardware/BUILD.md` | Parts, wiring, chemistry, calibration |
 | `eval/` | Scene generation (Muse Image), SAM masking, live accuracy and campaign benchmarks |
+| `eval/glimmer.py`, `eval/glimmer/` | Glimmer's training data, fine-tune, evaluation and publishing |
+| `src/rangrez/glimmer.py` | Glimmer's first-dip proposal in the lab |
+| `space/` | The Hugging Face Space (dashboard on the simulator; live models behind a passcode) |
 
 ## Built for
 

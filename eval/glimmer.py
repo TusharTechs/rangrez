@@ -42,7 +42,10 @@ from rangrez.vision import measure
 
 BASE_MODEL = "accounts/fireworks/models/muse-glimmer-30b"
 API = "https://api.fireworks.ai/v1"
-JOB_ID = os.environ.get("GLIMMER_JOB", "rangrez-glimmer-v1")
+JOB_ID = os.environ.get("GLIMMER_JOB", "rangrez-glimmer-v1")  # a Managed SFT job, if dataset uploads are enabled
+# The tuned model from Serverless Training (run with the Fireworks cookbook's Muse Glimmer starter;
+# its base vs tuned answers and summary are in eval/glimmer/run/).
+MODEL_ID = os.environ.get("GLIMMER_MODEL_ID", "muse-starter-sl-rangrez-glimmer-v1")
 
 
 # -- the lab's records ---------------------------------------------------------------
@@ -133,27 +136,27 @@ def cmd_train() -> None:
 
 def cmd_deploy() -> None:
     acct = account()
-    dep = call("POST", f"/accounts/{acct}/deployments?deploymentId={JOB_ID}", {
-        "baseModel": f"accounts/{acct}/models/{JOB_ID}", "deploymentShape": "default", "minReplicaCount": 0, "maxReplicaCount": 1,
+    dep = call("POST", f"/accounts/{acct}/deployments?deploymentId={MODEL_ID}", {
+        "baseModel": f"accounts/{acct}/models/{MODEL_ID}", "deploymentShape": "default", "minReplicaCount": 0, "maxReplicaCount": 1,
         "autoscalingPolicy": {"scaleToZeroWindow": "900s"}, "displayName": "Glimmer (Rangrez)",
     })
-    while (state := call("GET", f"/accounts/{acct}/deployments/{JOB_ID}").get("state")) != "READY":
+    while (state := call("GET", f"/accounts/{acct}/deployments/{MODEL_ID}").get("state")) != "READY":
         print(time.strftime("%H:%M:%S"), "deployment", state)
         if state == "FAILED":
-            sys.exit(json.dumps(call("GET", f"/accounts/{acct}/deployments/{JOB_ID}"))[:600])
+            sys.exit(json.dumps(call("GET", f"/accounts/{acct}/deployments/{MODEL_ID}"))[:600])
         time.sleep(20)
-    print("ready:", dep.get("name", f"accounts/{acct}/deployments/{JOB_ID}"))
+    print("ready:", dep.get("name", f"accounts/{acct}/deployments/{MODEL_ID}"))
 
 
 def cmd_undeploy() -> None:
     acct = account()
-    call("DELETE", f"/accounts/{acct}/deployments/{JOB_ID}?hard=true")
-    print("deleted deployment", JOB_ID)
+    call("DELETE", f"/accounts/{acct}/deployments/{MODEL_ID}?hard=true")
+    print("deleted deployment", MODEL_ID)
 
 
 def cmd_download() -> None:
     acct = account()
-    urls = call("GET", f"/accounts/{acct}/models/{JOB_ID}:getDownloadEndpoint").get("filenameToSignedUrls", {})
+    urls = call("GET", f"/accounts/{acct}/models/{MODEL_ID}:getDownloadEndpoint").get("filenameToSignedUrls", {})
     out = ROOT / "adapter"
     out.mkdir(parents=True, exist_ok=True)
     for name, url in urls.items():
@@ -171,7 +174,7 @@ def cmd_eval() -> None:
     world = VirtualRig()
     supplier = PROFILE.nominal()
     refit = fit_gains(supplier, [(np.array(d["conc"]), np.array(d["measured_lab"])) for d in recs["train"][:400]])
-    tuned = f"accounts/{acct}/models/{JOB_ID}#accounts/{acct}/deployments/{JOB_ID}"
+    tuned = f"accounts/{acct}/models/{MODEL_ID}#accounts/{acct}/deployments/{MODEL_ID}"
     models = {"supplier model": lambda lab: solve_recipe(supplier, lab, PROFILE.max_conc)[0],
               "model refitted to the lab's dips": lambda lab: solve_recipe(refit, lab, PROFILE.max_conc)[0],
               "Glimmer (fine-tuned)": lambda lab: first_guess(lab, model=tuned)}
@@ -249,8 +252,8 @@ tags: [lora, colour, textile, dyeing, rangrez]
 # Glimmer for Rangrez: first-dip colourist (LoRA on Muse Glimmer 30B)
 
 Given a target colour in CIELAB, proposes the first dye recipe (turquoise, fuchsia and lemon yellow
-reactive dyes, g/L) for the Rangrez self-driving dye lab. Fine-tuned with LoRA (rank 8, 2 epochs)
-on Fireworks Serverless Training, on 2,900 of the lab's recorded dips: each the recipe dipped and the
+reactive dyes, g/L) for the Rangrez self-driving dye lab. Fine-tuned with LoRA (rank 8, 2 epochs,
+364 steps) on Fireworks Serverless Training, on 2,900 of the lab's recorded dips: each the recipe dipped and the
 colour SAM 3.1 measured on the dried cloth in a real-looking phone photo. Dataset:
 [{user}/rangrez-lab-dips](https://huggingface.co/datasets/{user}/rangrez-lab-dips).
 
