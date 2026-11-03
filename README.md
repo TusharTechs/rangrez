@@ -316,6 +316,18 @@ Both fine-tunes used the same split and settings: rank 8, 2 epochs, batch 16, le
 
 The tuned model answers in about 32 tokens. With `GLIMMER_MODEL` set, every campaign's first dip is Glimmer's. The lab works without it, and if Glimmer is unreachable the first dip comes from the model. Answers, training curves and the dataset are in `eval/glimmer/`. Published: the adapter, [TechTush/rangrez-glimmer-lora](https://huggingface.co/TechTush/rangrez-glimmer-lora), and the dip records, [TechTush/rangrez-lab-dips](https://huggingface.co/datasets/TechTush/rangrez-lab-dips). The dips come from the simulator's hidden dye lot, so this adapter knows that lot; a real dye house would fine-tune on its own records the same way.
 
+## Related work
+
+Closed-loop colour matching is not new, and Rangrez builds on that idea rather than claiming it:
+
+| Work | What it does | How Rangrez differs |
+| --- | --- | --- |
+| [Self-driving lab demo](https://github.com/sparks-baird/self-driving-lab-demo) (Baird & Sparks) | Teaching kits that mix light or food dye and optimise towards a target colour, measured with a light sensor | Dyes real cotton and measures the dried cloth, not a liquid or a light |
+| [Argonne colour-matching benchmark](https://arxiv.org/abs/2310.00510), [NIMO controller](https://arxiv.org/abs/2605.15227), [bears-skills](https://skillselion.com/skills/pudap/bears-skills/bears-workflows) | Robotic labs that mix liquid dyes, photograph them and minimise the colour difference | Built for a dye house's lab dip, not a lab benchmark: a phone and a printed card instead of a fixed camera rig, and a person can stand in for the robot |
+| [Datacolor Textile Lab Manager](https://www.datacolor.com/wp-content/uploads/2024/06/Datacolor-Textile-Lab-Manager-Spec-Sheet-English.pdf), [X-Rite Color iMatch](https://www.xrite.com/learning-color-education/using-our-solutions/dye-houses-can-improve-textile-color-matching) | Industry colour-formulation software that predicts and corrects textile recipes | Needs no spectrophotometer or software licence; runs the dip-measure-correct loop itself; reads WhatsApp orders and replies in Hindi or Hinglish |
+
+What Rangrez adds is the combination: SAM 3.1 turning a phone photo into a calibrated measurement, an agent that runs the lab behind a deterministic safety gate, and the paperwork a small dye house actually sends, from the buyer's message to the lab-dip report.
+
 ## Project structure
 
 ```text
